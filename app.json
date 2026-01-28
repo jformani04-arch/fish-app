@@ -17,7 +17,12 @@
     "web": {
       "output": "static"
     },
-    "plugins": ["expo-router", "expo-font", "expo-sqlite"],
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-sqlite",
+      "expo-secure-store"
+    ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
