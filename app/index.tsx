@@ -34,7 +34,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" />
 
       <ImageBackground
@@ -86,7 +86,7 @@ export default function App() {
           </View>
         </View>
       </ImageBackground>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -103,7 +103,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingVertical: 40,
+    paddingVertical: 60,
     justifyContent: "space-between",
   },
   topSection: {

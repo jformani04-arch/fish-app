@@ -7,12 +7,14 @@
     "scheme": "fishapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "platforms": ["ios", "android", "web"],
     "ios": {
       "supportsTablet": true
     },
     "android": {
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.fishr"
     },
     "web": {
       "output": "static"
@@ -21,7 +23,8 @@
       "expo-router",
       "expo-font",
       "expo-sqlite",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true,
