@@ -1,8 +1,8 @@
-import AuthForm from "@/components/auth_card";
+import AuthForm from "@/components/AuthForm";
+import { COLORS } from "@/lib/colors";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { COLORS } from "@/lib/colors";
 
 export default function RegisterScreen() {
   return (
