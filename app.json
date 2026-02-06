@@ -24,7 +24,15 @@
       "expo-font",
       "expo-sqlite",
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Anglr to access your camera",
+          "microphonePermission": "Allow Anglr to access your microphone",
+          "recordAudioAndroid": true
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

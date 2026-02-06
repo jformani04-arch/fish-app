@@ -8,7 +8,6 @@ export default function RootLayout() {
     // 1️⃣ Check session on app load
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        // Redirect to first tab screen
         router.replace("/(tabs)/home");
       } else {
         router.replace("/");

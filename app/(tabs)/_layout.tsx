@@ -16,13 +16,11 @@ export default function TabsLayout() {
     <Stack
       screenOptions={{
         headerShown: false,
-        gestureEnabled: false, //disables swipe back on iOS
+        gestureEnabled: false,
       }}
       initialRouteName="home"
     >
       <Stack.Screen name="home" />
-      <Stack.Screen name="profile" />
-      <Stack.Screen name="settings" />
     </Stack>
   );
 }
