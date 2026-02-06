@@ -1,8 +1,29 @@
 import { Stack } from "expo-router";
-import { StyleSheet } from "react-native";
+import { useEffect } from "react";
+import { supabase } from "@/lib/supabase";
+import { router } from "expo-router";
 
 export default function TabsLayout() {
-  return <Stack />;
-}
+  useEffect(() => {
+    // Protect tabs: redirect to login if no session
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.replace("/(auth)/login");
+      }
+    });
+  }, []);
 
-const styles = StyleSheet.create({});
+  return (
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        gestureEnabled: false, //disables swipe back on iOS
+      }}
+      initialRouteName="home" // first screen in tabs
+    >
+      <Stack.Screen name="home" />
+      <Stack.Screen name="profile" />
+      <Stack.Screen name="settings" />
+    </Stack>
+  );
+}

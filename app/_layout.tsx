@@ -5,30 +5,37 @@ import { router } from "expo-router";
 
 export default function RootLayout() {
   useEffect(() => {
-    // Check current session on mount
+    // 1️⃣ Check session on app load
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        router.replace("/(tabs)");
+        // Redirect to first tab screen
+        router.replace("/(tabs)/home");
       } else {
         router.replace("/");
       }
     });
 
-    // Subscribe to auth changes (Google / email login)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // 2️⃣ Listen for auth state changes
+    const listener = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
-        router.replace("/(tabs)");
+        router.replace("/(tabs)/home");
+      } else {
+        router.replace("/");
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => listener.data.subscription.unsubscribe();
   }, []);
 
   return (
-    <Stack>
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    <Stack
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="index" />
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(tabs)" />
     </Stack>
   );
 }
