@@ -23,14 +23,18 @@ import {
   ArrowLeft,
   Bookmark,
   BookmarkPlus,
+  Check,
   Flame,
+  Globe,
+  Layers,
   MapPin,
+  Mountain,
   RefreshCcw,
   SlidersHorizontal,
   Tag,
   X,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -85,6 +89,19 @@ type MapBounds = {
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
+
+type MapStyle = "outdoors" | "standard" | "satellite";
+
+const MAP_STYLE_URLS: Record<MapStyle, string> = {
+  outdoors: "mapbox://styles/mapbox/outdoors-v12",
+  standard: "mapbox://styles/mapbox/standard",
+  satellite: "mapbox://styles/mapbox/satellite-streets-v12",
+};
+
+// Overlay registry types — architecture stub for future premium overlays
+// (species heatmaps, seasonal density, weather, depth). Not rendered yet.
+export type MapOverlayId = "heatmap" | "species_density" | "seasonal" | "weather" | "depth";
+export type MapOverlayDef = { id: MapOverlayId; label: string; requiresPro: boolean };
 
 const DEFAULT_CENTER: GeoPosition = [-81.841, 41.238];
 const DEFAULT_ZOOM = 9;
@@ -285,6 +302,13 @@ export default function CatchMapScreen() {
   const [filterSpecies, setFilterSpecies] = useState<string | null>(null);
   const [filterDateRange, setFilterDateRange] = useState<DateRange>(null);
 
+  // Map style
+  const [mapStyle, setMapStyle] = useState<MapStyle>("outdoors");
+  const [showStylePicker, setShowStylePicker] = useState(false);
+
+  // Layer visibility
+  const [showCatches, setShowCatches] = useState(true);
+
   // Heatmap
   const [showHeatmap, setShowHeatmap] = useState(false);
 
@@ -385,6 +409,9 @@ export default function CatchMapScreen() {
 
   const clusterColor =
     filterMode === "mine" ? "#FD7B41" : filterMode === "friends" ? "#4F8CFF" : "#22C55E";
+
+  const modeAccent =
+    filterMode === "mine" ? COLORS.primary : filterMode === "friends" ? "#4F8CFF" : "#22C55E";
 
   // ── Effects: load mine + friends ──────────────────────────────────────────
 
@@ -733,10 +760,11 @@ export default function CatchMapScreen() {
   const clusterCircleStyle = useMemo(
     () => ({
       circleColor: clusterColor,
-      circleRadius: ["step", ["get", "point_count"], 18, 10, 22, 50, 26] as any,
-      circleOpacity: 0.92,
-      circleStrokeWidth: 2,
-      circleStrokeColor: "rgba(255,255,255,0.22)",
+      circleRadius: ["step", ["get", "point_count"], 20, 10, 25, 50, 30] as any,
+      circleOpacity: 1.0,
+      circleStrokeWidth: 3,
+      circleStrokeColor: "#ffffff",
+      circleStrokeOpacity: 0.95,
     }),
     [clusterColor]
   );
@@ -745,7 +773,7 @@ export default function CatchMapScreen() {
     () => ({
       textField: ["get", "point_count_abbreviated"] as any,
       textFont: ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
-      textSize: 12,
+      textSize: 13,
       textColor: "#ffffff",
       textAllowOverlap: true,
       textIgnorePlacement: true,
@@ -756,19 +784,21 @@ export default function CatchMapScreen() {
   const singlePinStyle = useMemo(
     () => ({
       circleColor: ["get", "markerColor"] as any,
-      circleRadius: 8,
-      circleStrokeWidth: 2,
-      circleStrokeColor: "rgba(255,255,255,0.3)",
+      circleRadius: 9,
+      circleStrokeWidth: 2.5,
+      circleStrokeColor: "#ffffff",
+      circleStrokeOpacity: 0.92,
     }),
     []
   );
 
   const spotCircleStyle = useMemo(
     () => ({
-      circleColor: "rgba(253,123,65,0.15)",
-      circleRadius: 9,
+      circleColor: "rgba(253,123,65,0.18)",
+      circleRadius: 10,
       circleStrokeWidth: 2.5,
       circleStrokeColor: COLORS.primary,
+      circleStrokeOpacity: 1,
     }),
     []
   );
@@ -799,7 +829,7 @@ export default function CatchMapScreen() {
       <MapboxGL.MapView
         ref={mapRef}
         style={styles.map}
-        styleURL="mapbox://styles/mapbox/dark-v11"
+        styleURL={MAP_STYLE_URLS[mapStyle]}
         onDidFinishLoadingMap={() => setIsMapReady(true)}
         onCameraChanged={handleCameraChanged as any}
         onPress={handleMapPress as any}
@@ -825,33 +855,32 @@ export default function CatchMapScreen() {
         )}
 
         {/* Catch markers with clustering */}
-        <MapboxGL.ShapeSource
-          id="catches-source"
-          shape={catchesGeoJSON}
-          cluster
-          clusterRadius={48}
-          clusterMaxZoomLevel={14}
-          onPress={handlePinPress as any}
-        >
-          {/* Cluster circles */}
-          <MapboxGL.CircleLayer
-            id="clusters-circle"
-            filter={["has", "point_count"]}
-            style={clusterCircleStyle}
-          />
-          {/* Cluster count labels */}
-          <MapboxGL.SymbolLayer
-            id="clusters-count"
-            filter={["has", "point_count"]}
-            style={clusterTextStyle}
-          />
-          {/* Single pin circles */}
-          <MapboxGL.CircleLayer
-            id="single-pins"
-            filter={["!", ["has", "point_count"]]}
-            style={singlePinStyle}
-          />
-        </MapboxGL.ShapeSource>
+        {showCatches && (
+          <MapboxGL.ShapeSource
+            id="catches-source"
+            shape={catchesGeoJSON}
+            cluster
+            clusterRadius={48}
+            clusterMaxZoomLevel={14}
+            onPress={handlePinPress as any}
+          >
+            <MapboxGL.CircleLayer
+              id="clusters-circle"
+              filter={["has", "point_count"]}
+              style={clusterCircleStyle}
+            />
+            <MapboxGL.SymbolLayer
+              id="clusters-count"
+              filter={["has", "point_count"]}
+              style={clusterTextStyle}
+            />
+            <MapboxGL.CircleLayer
+              id="single-pins"
+              filter={["!", ["has", "point_count"]]}
+              style={singlePinStyle}
+            />
+          </MapboxGL.ShapeSource>
+        )}
 
         {/* Fishing spots layer */}
         {showSpots && spots.length > 0 && (
@@ -865,6 +894,13 @@ export default function CatchMapScreen() {
         )}
       </MapboxGL.MapView>
 
+      {/* Header fade behind controls */}
+      <View style={styles.headerGradient} pointerEvents="none">
+        <View style={styles.headerGradientTop} />
+        <View style={styles.headerGradientMid} />
+        <View style={styles.headerGradientBottom} />
+      </View>
+
       {/* Add spot crosshair overlay */}
       {addingSpot && (
         <View style={styles.addSpotOverlay} pointerEvents="none">
@@ -877,144 +913,157 @@ export default function CatchMapScreen() {
       <MapZoomControls
         onZoomIn={() => handleZoom("in")}
         onZoomOut={() => handleZoom("out")}
-        style={{ top: insets.top + (Platform.OS === "android" ? 132 : 128) }}
+        style={{ top: insets.top + (Platform.OS === "android" ? 152 : 148) }}
       />
 
       {/* Header */}
       <View
         style={[
           styles.header,
-          { paddingTop: insets.top + (Platform.OS === "android" ? 8 : 4) },
+          { paddingTop: insets.top + (Platform.OS === "android" ? 6 : 2) },
         ]}
         pointerEvents="box-none"
       >
-        <Pressable
-          onPress={() => {
-            if (addingSpot) {
-              setAddingSpot(false);
-            } else {
-              router.replace("/(tabs)/home");
-            }
-          }}
-          style={styles.backButton}
-        >
-          <ArrowLeft color={COLORS.text} size={20} strokeWidth={2.4} />
-        </Pressable>
+        {/* Row 1: back button + action controls */}
+        <View style={styles.headerRow}>
+          <Pressable
+            onPress={() => {
+              if (addingSpot) {
+                setAddingSpot(false);
+              } else {
+                router.replace("/(tabs)/home");
+              }
+            }}
+            style={styles.backButton}
+          >
+            <ArrowLeft color={COLORS.text} size={18} strokeWidth={2.4} />
+          </Pressable>
 
-        <View style={styles.headerCenter}>
-          {!addingSpot && (
+          <View style={{ flex: 1 }} />
+
+          <View style={styles.headerActions}>
+            {!addingSpot && (
+              <>
+                <View style={styles.actionsGroup}>
+                  <Pressable
+                    onPress={() => setShowFilterSheet(true)}
+                    style={[styles.groupBtn, hasActiveFilters && styles.groupBtnActive]}
+                  >
+                    <SlidersHorizontal
+                      color={hasActiveFilters ? COLORS.primary : COLORS.text}
+                      size={15}
+                      strokeWidth={2.2}
+                    />
+                    {activeFilterCount > 0 && (
+                      <View style={styles.filterCountBadge}>
+                        <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+                      </View>
+                    )}
+                  </Pressable>
+                  <View style={styles.groupDivider} />
+                  <Pressable
+                    onPress={() => setShowStylePicker((v) => !v)}
+                    style={[styles.groupBtn, showStylePicker && styles.groupBtnActive]}
+                  >
+                    <Layers
+                      color={showStylePicker ? COLORS.primary : COLORS.text}
+                      size={15}
+                      strokeWidth={2.2}
+                    />
+                  </Pressable>
+                  <View style={styles.groupDivider} />
+                  <Pressable
+                    onPress={() => { setAddingSpot(true); setShowSpots(true); }}
+                    style={styles.groupBtn}
+                  >
+                    <BookmarkPlus color={COLORS.text} size={15} strokeWidth={2.2} />
+                  </Pressable>
+                </View>
+
+                <View style={[styles.countChip, { borderColor: `${modeAccent}44` }]}>
+                  {isActiveLoading ? (
+                    <ActivityIndicator size="small" color={modeAccent} />
+                  ) : (
+                    <Text style={[styles.countText, { color: modeAccent }]}>{renderablePins.length}</Text>
+                  )}
+                </View>
+              </>
+            )}
+
+            {addingSpot && (
+              <Pressable onPress={handleAddSpotFromCenter} style={styles.placeButton}>
+                <Text style={styles.placeButtonText}>Place Here</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+
+        {/* Row 2: filter mode toggle */}
+        {!addingSpot && (
+          <View style={styles.headerToggleRow}>
             <FilterToggle
               mode={filterMode}
+              activeColor={modeAccent}
               onChange={(mode) => {
                 setFilterMode(mode);
                 if (mode !== "friends") setSelectedFriendId("all");
               }}
             />
-          )}
+          </View>
+        )}
 
-          {addingSpot && (
+        {addingSpot && (
+          <View style={styles.headerToggleRow}>
             <View style={styles.addingSpotBanner}>
               <Text style={styles.addingSpotText}>Adding Spot Mode</Text>
             </View>
-          )}
+          </View>
+        )}
 
-          {filterMode === "friends" && !addingSpot && (
-            <FriendSelector
-              friends={friends}
-              selectedFriendId={selectedFriendId}
-              onSelect={setSelectedFriendId}
-            />
-          )}
-        </View>
-
-        <View style={styles.headerActions}>
-          {/* Filter button */}
-          {!addingSpot && (
-            <Pressable
-              onPress={() => setShowFilterSheet(true)}
-              style={[styles.iconButton, hasActiveFilters && styles.iconButtonActive]}
-            >
-              <SlidersHorizontal
-                color={hasActiveFilters ? COLORS.primary : COLORS.text}
-                size={16}
-                strokeWidth={2.2}
-              />
-              {activeFilterCount > 0 && (
-                <View style={styles.filterCountBadge}>
-                  <Text style={styles.filterCountText}>{activeFilterCount}</Text>
-                </View>
-              )}
-            </Pressable>
-          )}
-
-          {/* Heatmap toggle */}
-          {!addingSpot && (
-            <Pressable
-              onPress={() => isPro ? setShowHeatmap((v) => !v) : router.push("/pro")}
-              style={[styles.iconButton, showHeatmap && styles.iconButtonActive]}
-            >
-              <Flame
-                color={showHeatmap ? COLORS.primary : isPro ? COLORS.text : COLORS.textSecondary}
-                size={16}
-                strokeWidth={2.2}
-              />
-              {!isPro && (
-                <View style={styles.heatmapProBadge}>
-                  <ProBadge size="xs" />
-                </View>
-              )}
-            </Pressable>
-          )}
-
-          {/* Add spot button */}
-          {!addingSpot && (
-            <Pressable
-              onPress={() => {
-                setAddingSpot(true);
-                setShowSpots(true);
-              }}
-              style={styles.iconButton}
-            >
-              <BookmarkPlus color={COLORS.text} size={16} strokeWidth={2.2} />
-            </Pressable>
-          )}
-
-          {addingSpot && (
-            <Pressable onPress={handleAddSpotFromCenter} style={styles.placeButton}>
-              <Text style={styles.placeButtonText}>Place Here</Text>
-            </Pressable>
-          )}
-
-          {/* Pin count badge */}
-          {!addingSpot && (
-            <View style={styles.countBadge}>
-              {isActiveLoading ? (
-                <ActivityIndicator size="small" color={COLORS.primary} />
-              ) : (
-                <MapPin color={COLORS.primary} size={14} strokeWidth={2.2} />
-              )}
-              <Text style={styles.countText}>{renderablePins.length}</Text>
-            </View>
-          )}
-        </View>
+        {/* Row 3: friend chips (only in friends mode) */}
+        {filterMode === "friends" && !addingSpot && (
+          <FriendSelector
+            friends={friends}
+            selectedFriendId={selectedFriendId}
+            onSelect={setSelectedFriendId}
+          />
+        )}
       </View>
 
-      {/* Spots visibility toggle */}
-      {!addingSpot && spots.length > 0 && (
-        <Pressable
-          onPress={() => setShowSpots((v) => !v)}
-          style={[
-            styles.spotsToggle,
-            { top: insets.top + (Platform.OS === "android" ? 132 : 128) + 100 },
-          ]}
-        >
-          <Bookmark
-            color={showSpots ? COLORS.primary : COLORS.textSecondary}
-            size={16}
-            strokeWidth={2.2}
-            fill={showSpots ? COLORS.primary : "none"}
-          />
-        </Pressable>
+      {/* Layer controls panel */}
+      {!addingSpot && (
+        <MapLayerPanel
+          showCatches={showCatches}
+          onToggleCatches={() => setShowCatches((v) => !v)}
+          showSpots={showSpots}
+          onToggleSpots={() => setShowSpots((v) => !v)}
+          hasSpots={spots.length > 0}
+          showHeatmap={showHeatmap}
+          onToggleHeatmap={() =>
+            isPro ? setShowHeatmap((v) => !v) : router.push("/pro")
+          }
+          isPro={isPro}
+          style={{ top: insets.top + (Platform.OS === "android" ? 152 : 148) }}
+        />
+      )}
+
+      {/* Map style picker */}
+      {showStylePicker && !addingSpot && (
+        <MapStylePicker
+          current={mapStyle}
+          isPro={isPro}
+          onSelect={(style) => {
+            if (style === "satellite" && !isPro) {
+              setShowStylePicker(false);
+              router.push("/pro");
+              return;
+            }
+            setMapStyle(style);
+            setShowStylePicker(false);
+          }}
+          onClose={() => setShowStylePicker(false)}
+          insetTop={insets.top + (Platform.OS === "android" ? 8 : 4)}
+        />
       )}
 
       {/* Loading overlay */}
@@ -1068,6 +1117,7 @@ export default function CatchMapScreen() {
       {/* Catch callout card */}
       {selectedPin && (
         <View style={[styles.calloutCard, { paddingBottom: insets.bottom + 12 }]}>
+          <View style={styles.calloutHandle} />
           <View style={styles.calloutRow}>
             <Pressable
               style={styles.calloutContent}
@@ -1153,6 +1203,7 @@ export default function CatchMapScreen() {
       {/* Spot callout card */}
       {selectedSpot && (
         <View style={[styles.calloutCard, { paddingBottom: insets.bottom + 12 }]}>
+          <View style={styles.calloutHandle} />
           <View style={styles.calloutRow}>
             <View style={[styles.calloutImage, styles.spotIconBox]}>
               <Bookmark color={COLORS.primary} size={22} strokeWidth={1.8} />
@@ -1244,9 +1295,11 @@ export default function CatchMapScreen() {
 
 function FilterToggle({
   mode,
+  activeColor,
   onChange,
 }: {
   mode: FilterMode;
+  activeColor: string;
   onChange: (mode: FilterMode) => void;
 }) {
   return (
@@ -1254,7 +1307,10 @@ function FilterToggle({
       {(["mine", "friends", "global"] as FilterMode[]).map((option) => (
         <Pressable
           key={option}
-          style={[toggleStyles.btn, mode === option && toggleStyles.active]}
+          style={[
+            toggleStyles.btn,
+            mode === option && { backgroundColor: activeColor },
+          ]}
           onPress={() => onChange(option)}
         >
           <Text style={[toggleStyles.label, mode === option && toggleStyles.labelActive]}>
@@ -1472,6 +1528,259 @@ function FilterSheet({
   );
 }
 
+function MapLayerPanel({
+  showCatches,
+  onToggleCatches,
+  showSpots,
+  onToggleSpots,
+  hasSpots,
+  showHeatmap,
+  onToggleHeatmap,
+  isPro,
+  style,
+}: {
+  showCatches: boolean;
+  onToggleCatches: () => void;
+  showSpots: boolean;
+  onToggleSpots: () => void;
+  hasSpots: boolean;
+  showHeatmap: boolean;
+  onToggleHeatmap: () => void;
+  isPro: boolean;
+  style?: object;
+}) {
+  return (
+    <View style={[layerPanelStyles.wrap, style]} pointerEvents="box-none">
+      {/* Catches */}
+      <Pressable
+        style={[layerPanelStyles.btn, showCatches && layerPanelStyles.btnActive]}
+        onPress={onToggleCatches}
+      >
+        <MapPin
+          color={showCatches ? COLORS.primary : COLORS.textSecondary}
+          size={15}
+          strokeWidth={2.2}
+          fill={showCatches ? "rgba(253,123,65,0.25)" : "none"}
+        />
+      </Pressable>
+
+      {/* Spots */}
+      {hasSpots && (
+        <>
+          <View style={layerPanelStyles.divider} />
+          <Pressable
+            style={[layerPanelStyles.btn, showSpots && layerPanelStyles.btnActive]}
+            onPress={onToggleSpots}
+          >
+            <Bookmark
+              color={showSpots ? COLORS.primary : COLORS.textSecondary}
+              size={15}
+              strokeWidth={2.2}
+              fill={showSpots ? COLORS.primary : "none"}
+            />
+          </Pressable>
+        </>
+      )}
+
+      {/* Heatmap (Pro) */}
+      <View style={layerPanelStyles.divider} />
+      <Pressable
+        style={[layerPanelStyles.btn, showHeatmap && layerPanelStyles.btnActive]}
+        onPress={onToggleHeatmap}
+      >
+        <Flame
+          color={showHeatmap ? COLORS.primary : COLORS.textSecondary}
+          size={15}
+          strokeWidth={2.2}
+        />
+        {!isPro && (
+          <View style={layerPanelStyles.proBadgeWrap}>
+            <ProBadge size="xs" />
+          </View>
+        )}
+      </Pressable>
+    </View>
+  );
+}
+
+const layerPanelStyles = StyleSheet.create({
+  wrap: {
+    position: "absolute",
+    left: 16,
+    backgroundColor: "rgba(17,19,21,0.90)",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  btn: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  btnActive: {
+    backgroundColor: "rgba(253,123,65,0.16)",
+  },
+  divider: {
+    height: 1,
+    marginHorizontal: 8,
+    backgroundColor: "rgba(255,255,255,0.10)",
+  },
+  proBadgeWrap: {
+    position: "absolute",
+    bottom: 4,
+    right: 4,
+  },
+});
+
+function MapStylePicker({
+  current,
+  isPro,
+  onSelect,
+  onClose,
+  insetTop,
+}: {
+  current: MapStyle;
+  isPro: boolean;
+  onSelect: (style: MapStyle) => void;
+  onClose: () => void;
+  insetTop: number;
+}) {
+  const OPTIONS: { id: MapStyle; label: string; sub: string; icon: React.ReactNode; pro: boolean }[] = [
+    {
+      id: "outdoors",
+      label: "Outdoors",
+      sub: "Terrain, water & trails",
+      icon: <Mountain size={18} color={current === "outdoors" ? COLORS.primary : COLORS.text} strokeWidth={2} />,
+      pro: false,
+    },
+    {
+      id: "standard",
+      label: "Standard",
+      sub: "Clean street map",
+      icon: <Layers size={18} color={current === "standard" ? COLORS.primary : COLORS.text} strokeWidth={2} />,
+      pro: false,
+    },
+    {
+      id: "satellite",
+      label: "Satellite",
+      sub: "Aerial imagery",
+      icon: <Globe size={18} color={current === "satellite" ? COLORS.primary : isPro ? COLORS.text : COLORS.textSecondary} strokeWidth={2} />,
+      pro: true,
+    },
+  ];
+
+  return (
+    <>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+      <View style={[stylePickerStyles.card, { top: insetTop + 52 }]}>
+        <View style={stylePickerStyles.header}>
+          <Text style={stylePickerStyles.title}>Map Style</Text>
+        </View>
+        {OPTIONS.map((opt, i) => (
+          <Pressable
+            key={opt.id}
+            style={[
+              stylePickerStyles.row,
+              i < OPTIONS.length - 1 && stylePickerStyles.rowBorder,
+              current === opt.id && stylePickerStyles.rowActive,
+            ]}
+            onPress={() => onSelect(opt.id)}
+          >
+            <View style={stylePickerStyles.rowIcon}>{opt.icon}</View>
+            <View style={stylePickerStyles.rowCopy}>
+              <Text style={[stylePickerStyles.rowLabel, current === opt.id && stylePickerStyles.rowLabelActive]}>
+                {opt.label}
+              </Text>
+              <Text style={stylePickerStyles.rowSub}>{opt.sub}</Text>
+            </View>
+            <View style={stylePickerStyles.rowRight}>
+              {opt.pro && !isPro && <ProBadge size="xs" />}
+              {current === opt.id && (
+                <Check size={16} color={COLORS.primary} strokeWidth={2.5} />
+              )}
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    </>
+  );
+}
+
+const stylePickerStyles = StyleSheet.create({
+  card: {
+    position: "absolute",
+    right: 16,
+    width: 220,
+    backgroundColor: "rgba(28,31,35,0.97)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 20,
+    overflow: "hidden",
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.08)",
+  },
+  title: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.8,
+    textTransform: "uppercase",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
+  },
+  rowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.07)",
+  },
+  rowActive: {
+    backgroundColor: "rgba(253,123,65,0.08)",
+  },
+  rowIcon: {
+    width: 28,
+    alignItems: "center",
+  },
+  rowCopy: { flex: 1 },
+  rowLabel: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  rowLabelActive: { color: COLORS.primary },
+  rowSub: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    marginTop: 1,
+  },
+  rowRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    minWidth: 20,
+  },
+});
+
 // ── Empty state helpers ───────────────────────────────────────────────────────
 
 function getEmptyTitle(mode: FilterMode, selectedFriendId: string, hasFilters: boolean) {
@@ -1510,15 +1819,20 @@ const toggleStyles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
     padding: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   btn: {
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
   },
   active: { backgroundColor: COLORS.primary },
-  label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" },
-  labelActive: { color: "#000" },
+  label: { color: COLORS.textSecondary, fontSize: 12, fontWeight: "600" },
+  labelActive: { color: "#000000" },
 });
 
 const styles = StyleSheet.create({
@@ -1530,61 +1844,104 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    flexDirection: "row",
-    alignItems: "flex-start",
+    flexDirection: "column",
     paddingHorizontal: 16,
-    paddingBottom: 12,
-    gap: 10,
+    paddingBottom: 6,
+    gap: 5,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerToggleRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  headerGradient: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 130,
+    overflow: "hidden",
+  },
+  headerGradientTop: {
+    height: 44,
+    backgroundColor: "rgba(17,19,21,0.82)",
+  },
+  headerGradientMid: {
+    height: 44,
+    backgroundColor: "rgba(17,19,21,0.46)",
+  },
+  headerGradientBottom: {
+    flex: 1,
+    backgroundColor: "rgba(17,19,21,0.14)",
   },
   backButton: {
-    width: 42,
-    height: 42,
+    width: 32,
+    height: 32,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(17,19,21,0.90)",
+    backgroundColor: "rgba(17,19,21,0.88)",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  headerCenter: { flex: 1, gap: 8 },
   headerActions: {
-    flexDirection: "column",
-    alignItems: "center",
-    gap: 8,
-  },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 999,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(60,64,68,0.88)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.18)",
-  },
-  iconButtonActive: {
-    backgroundColor: "rgba(253,123,65,0.18)",
-    borderColor: "rgba(253,123,65,0.5)",
-  },
-  heatmapProBadge: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-  },
-  countBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
-    backgroundColor: "rgba(60,64,68,0.88)",
+    gap: 7,
+  },
+  actionsGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(17,19,21,0.88)",
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-    minWidth: 54,
+    borderColor: "rgba(255,255,255,0.18)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  groupBtn: {
+    width: 38,
+    height: 32,
+    alignItems: "center",
     justifyContent: "center",
   },
-  countText: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+  groupBtnActive: {
+    backgroundColor: "rgba(253,123,65,0.18)",
+  },
+  groupDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: "rgba(255,255,255,0.15)",
+  },
+  countChip: {
+    backgroundColor: "rgba(17,19,21,0.90)",
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10,
+    height: 32,
+    minWidth: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  countText: { color: COLORS.primary, fontSize: 13, fontWeight: "700" },
 
   addingSpotBanner: {
     backgroundColor: "rgba(253,123,65,0.15)",
@@ -1606,19 +1963,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   placeButtonText: { color: "#000", fontWeight: "700", fontSize: 13 },
-
-  spotsToggle: {
-    position: "absolute",
-    right: 16,
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(17,19,21,0.9)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.15)",
-  },
 
   addSpotOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1700,13 +2044,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.15)",
     paddingHorizontal: 16,
-    paddingTop: 16,
+    paddingTop: 10,
     gap: 12,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 12,
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  calloutHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignSelf: "center",
+    marginBottom: 8,
   },
   calloutRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   calloutContent: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
