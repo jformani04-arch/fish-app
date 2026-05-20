@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Anglr",
-    "slug": "anglr",
+    "name": "FishForge",
+    "slug": "fishforge",
     "version": "1.0.0",
     "icon": "./assets/images/appIcon.png",
     "orientation": "portrait",
-    "scheme": "anglr",
+    "scheme": "fishforge",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "platforms": [
@@ -20,7 +20,7 @@
     "android": {
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anglr",
+      "package": "com.fishforgeapp",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/appIcon.png",
         "backgroundColor": "#111315"
@@ -55,14 +55,14 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Anglr to use your location to prefill catch location."
+          "locationWhenInUsePermission": "Allow FishForge to use your location to prefill catch location."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow Anglr to access your camera",
-          "microphonePermission": "Allow Anglr to access your microphone",
+          "cameraPermission": "Allow FishForge to access your camera",
+          "microphonePermission": "Allow FishForge to access your microphone",
           "recordAudioAndroid": true
         }
       ]

@@ -152,7 +152,7 @@ export default function Home() {
             />
           </Pressable>
           <View style={styles.headerText}>
-            <Text style={styles.title}>Anglr</Text>
+            <Text style={styles.title}>FishForge</Text>
             <Text style={styles.subtitle}>
               Welcome back
               {profile?.username ? `, ${profile.username}` : ""}!

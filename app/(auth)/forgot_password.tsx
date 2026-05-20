@@ -39,7 +39,7 @@ export default function ForgotPassword() {
       setError(null);
 
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(trimmed, {
-        redirectTo: "https://anglrapp.com/reset-password",
+        redirectTo: "https://fishforgeapp.com/reset-password",
       });
 
       if (resetError) throw resetError;

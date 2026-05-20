@@ -1,8 +1,8 @@
 # Overview
 
-## What Anglr Is
+## What FishForge Is
 
-Anglr is a mobile app (Android-first, iOS-compatible) for recreational anglers to log fishing catches, track personal stats, share catches with friends, and explore catches on a map. It began as a single-user catch tracker and was extended into a social platform in April 2026.
+FishForge is a mobile app (Android-first, iOS-compatible) for recreational anglers to log fishing catches, track personal stats, share catches with friends, and explore catches on a map. It began as a single-user catch tracker and was extended into a social platform in April 2026.
 
 ## Core Features
 
@@ -47,10 +47,10 @@ Anglr is a mobile app (Android-first, iOS-compatible) for recreational anglers t
 
 - **Primary:** Android (Play Store submission pending)
 - **Secondary:** iOS (same codebase)
-- **App ID:** `com.anglr`
-- **Expo Slug:** `anglr`
+- **App ID:** `com.fishforgeapp`
+- **Expo Slug:** `fishforge`
 - **EAS Project ID:** `37fc6544-015c-4196-b898-520e2971335e`
-- **Deep link scheme:** `anglr://`
+- **Deep link scheme:** `fishforge://`
 
 ## Current Version
 

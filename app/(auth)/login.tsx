@@ -12,7 +12,7 @@ export default function LoginScreen() {
       </Pressable>
 
       <View style={styles.header}>
-        <Text style={styles.title}>Log in to Anglr</Text>
+        <Text style={styles.title}>Log in to FishForge</Text>
         <Text style={styles.subtitle}>Sign in to continue</Text>
       </View>
 

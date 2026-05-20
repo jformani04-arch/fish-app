@@ -2,7 +2,7 @@
 
 ## Summary
 
-Anglr is close to a functional Play Store submission but has several blockers that must be addressed before launch. The most critical are the email deliverability issue and the Google Maps API key restriction.
+FishForge is close to a functional Play Store submission but has several blockers that must be addressed before launch. The most critical are the email deliverability issue and the Google Maps API key restriction.
 
 ---
 
@@ -60,7 +60,7 @@ Anglr is close to a functional Play Store submission but has several blockers th
 | Password reset email deliverability | ❌ | Reset links land in spam; users cannot reset passwords reliably |
 | Reset page domain | ⚠️ | Points to `.supabase.co` or `.vercel.app` — confusing/untrustworthy |
 
-**Recommendation:** Configure a custom domain (e.g. `anglrapp.com`) and set up Supabase's custom SMTP with a transactional email provider (Resend, Postmark, SendGrid). The password reset redirect URL should go to a page on your own domain.
+**Recommendation:** Configure a custom domain (e.g. `fishforgeapp.com`) and set up Supabase's custom SMTP with a transactional email provider (Resend, Postmark, SendGrid). The password reset redirect URL should go to a page on your own domain.
 
 ---
 
@@ -79,7 +79,7 @@ Anglr is close to a functional Play Store submission but has several blockers th
 
 | Item | Status | Notes |
 |------|--------|-------|
-| Package name | ✅ | `com.anglr` |
+| Package name | ✅ | `com.fishforgeapp` |
 | Adaptive icon | ✅ | Configured in app.json |
 | Edge-to-edge | ✅ | `edgeToEdgeEnabled: true` |
 | Predictive back gesture | ✅ | Disabled (`predictiveBackGestureEnabled: false`) |

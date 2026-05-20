@@ -89,7 +89,7 @@ User completes imageReview form
 User completes imageReview form
   → createCatchLog(input) in lib/catches.ts
   → refreshNetworkStatus() returns false
-  → queuePendingCatch() stores record in AsyncStorage under "anglr.pending-catches.v1"
+  → queuePendingCatch() stores record in AsyncStorage under "anglr.pending-catches.v1" (key retained for backwards compatibility)
   → Returns { catchId, syncStatus: "pending" }
   → CatchSyncBootstrap polls every 30s and listens for connectivity
   → When online: syncPendingCatchLogs() uploads image + inserts row

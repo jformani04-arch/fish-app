@@ -44,7 +44,7 @@ export default function App() {
         <View style={styles.content}>
           {/* Top Section */}
           <View style={styles.topSection}>
-            <Text style={styles.appName}>Anglr</Text>
+            <Text style={styles.appName}>FishForge</Text>
 
             <View style={styles.tagline}>
               <Text style={styles.taglineText}>Track catches</Text>
@@ -60,7 +60,7 @@ export default function App() {
               activeOpacity={0.8}
               onPress={() => router.push("/(auth)/register")}
               accessible
-              accessibilityLabel="Get started with Anglr"
+              accessibilityLabel="Get started with FishForge"
               accessibilityRole="button"
             >
               <Text style={styles.primaryButtonText}>GET STARTED</Text>

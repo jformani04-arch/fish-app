@@ -2,13 +2,13 @@
 
 ## Design Philosophy
 
-Anglr is offline-first for catch creation. A user can log catches without internet and they will sync automatically when connectivity returns. The implementation uses AsyncStorage as a local queue — no SQLite, no complex sync framework.
+FishForge is offline-first for catch creation. A user can log catches without internet and they will sync automatically when connectivity returns. The implementation uses AsyncStorage as a local queue — no SQLite, no complex sync framework.
 
 ---
 
 ## Queue Storage
 
-**Key:** `anglr.pending-catches.v1`
+**Key:** `anglr.pending-catches.v1` (retained for backwards compatibility — changing this key would lose cached offline catches for existing users)
 
 **Format:** JSON array of `PendingCatchRecord` objects stored in AsyncStorage.
 

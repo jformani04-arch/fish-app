@@ -19,7 +19,7 @@ export async function signInWithGoogle() {
   try {
     // Redirect back into the app on a real route so Expo Router does not show "not found".
     const redirectUri = AuthSession.makeRedirectUri({
-      scheme: "anglr",
+      scheme: "fishforge",
       path: "auth/callback",
     });
 

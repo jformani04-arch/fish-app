@@ -1,6 +1,6 @@
-# Anglr — Developer Documentation
+# FishForge — Developer Documentation
 
-Anglr is a social fishing catch-tracking app built with Expo (React Native) and Supabase. This documentation covers every system in the app at a level sufficient to onboard a new developer, perform maintenance, and evaluate launch readiness.
+FishForge is a social fishing catch-tracking app built with Expo (React Native) and Supabase. This documentation covers every system in the app at a level sufficient to onboard a new developer, perform maintenance, and evaluate launch readiness.
 
 ---
 

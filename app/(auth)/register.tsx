@@ -13,7 +13,7 @@ export default function RegisterScreen() {
 
       <View style={styles.header}>
         <Text style={styles.title}>Create your account</Text>
-        <Text style={styles.subtitle}>Join Anglr today</Text>
+        <Text style={styles.subtitle}>Join FishForge today</Text>
       </View>
 
       <AuthForm mode="register" />

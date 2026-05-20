@@ -1,6 +1,6 @@
 # Database Schema
 
-The Anglr backend uses a single Supabase (PostgreSQL) project. The schema is managed directly in the Supabase dashboard — there are no checked-in migration files for the base schema (only the friendships migration at `supabase/migrations/20260416_friendships.sql`).
+The FishForge backend uses a single Supabase (PostgreSQL) project. The schema is managed directly in the Supabase dashboard — there are no checked-in migration files for the base schema (only the friendships migration at `supabase/migrations/20260416_friendships.sql`).
 
 ---
 

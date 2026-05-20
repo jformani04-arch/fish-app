@@ -152,7 +152,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 export async function linkGoogleIdentity(): Promise<void> {
   const redirectUri = AuthSession.makeRedirectUri({
-    scheme: "anglr",
+    scheme: "fishforge",
     path: "auth/callback",
   });
 
@@ -209,7 +209,7 @@ export async function linkGoogleIdentity(): Promise<void> {
 
 export async function enableEmailLogin(email: string): Promise<void> {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: "https://anglrapp.com/reset-password",
+    redirectTo: "https://fishforgeapp.com/reset-password",
   });
   if (error) throw error;
 }

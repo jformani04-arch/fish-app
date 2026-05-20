@@ -84,10 +84,10 @@ Wraps the entire app. Provides:
 
 `auth/google.ts`, `app/auth/callback.tsx`
 
-1. `AuthSession.makeRedirectUri({ scheme: "anglr", path: "auth/callback" })` → `anglr://auth/callback`
+1. `AuthSession.makeRedirectUri({ scheme: "fishforge", path: "auth/callback" })` → `fishforge://auth/callback`
 2. `supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo, skipBrowserRedirect: true } })`
 3. `WebBrowser.openAuthSessionAsync(url, redirectUri)` opens the system browser.
-4. User consents → browser redirects to `anglr://auth/callback` with tokens in URL fragment or query params.
+4. User consents → browser redirects to `fishforge://auth/callback` with tokens in URL fragment or query params.
 5. `app/auth/callback.tsx` extracts `access_token` + `refresh_token` (or `code`).
 6. Calls `setSession()` or `exchangeCodeForSession()`.
 7. Profile is auto-created on first login via `ensureProfileRow()` in `getProfile()`.
@@ -99,9 +99,9 @@ Wraps the entire app. Provides:
 `app/(auth)/forgot_password.tsx`, `app/auth/reset-password.tsx`
 
 1. User enters email on `forgot_password.tsx`.
-2. `supabase.auth.resetPasswordForEmail(email, { redirectTo: "anglr://auth/reset-password" })`
+2. `supabase.auth.resetPasswordForEmail(email, { redirectTo: "fishforge://auth/reset-password" })`
 3. Supabase sends an email with a link that contains a token.
-4. User taps the link → browser opens → redirects to `anglr://auth/reset-password` with the token.
+4. User taps the link → browser opens → redirects to `fishforge://auth/reset-password` with the token.
 5. `reset-password.tsx` calls `supabase.auth.updateUser({ password: newPassword })`.
 
 **Current limitation:** Supabase email comes from `@mail.supabase.co` or the project's default domain. Without a custom SMTP configuration, these emails land in spam and the reset link goes to a `.vercel.app` or `supabase.co` URL. See [launch-checklist.md](launch-checklist.md).

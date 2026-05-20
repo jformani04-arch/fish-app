@@ -8,7 +8,7 @@ Status key: ✅ Ready | ⚠️ Needs attention | ❌ Blocker
 
 | # | Item | Status | Action |
 |---|------|--------|--------|
-| S1 | Google Maps API key restricted to `com.anglr` package + Maps SDK for Android | ❌ | Go to Google Cloud Console → Credentials → restrict the key |
+| S1 | Google Maps API key restricted to `com.fishforgeapp` package + Maps SDK for Android | ❌ | Go to Google Cloud Console → Credentials → restrict the key |
 | S2 | Service role key never exposed in client bundle | ✅ | Verified — only in `.env` and Edge Functions |
 | S3 | RLS enabled on `profiles`, `catch_logs`, `friendships` tables | ⚠️ | Verify in Supabase Dashboard → Table Editor → RLS |
 | S4 | `RECORD_AUDIO` permission justified or removed | ⚠️ | If no video recording: set `recordAudioAndroid: false` in `app.json` |
@@ -20,10 +20,10 @@ Status key: ✅ Ready | ⚠️ Needs attention | ❌ Blocker
 
 | # | Item | Status | Action |
 |---|------|--------|--------|
-| E1 | Custom domain registered (e.g. `anglrapp.com`) | ❌ | Register domain; point to Vercel or hosting provider |
+| E1 | Custom domain registered (e.g. `fishforgeapp.com`) | ❌ | Register domain; point to Vercel or hosting provider |
 | E2 | Custom SMTP configured in Supabase | ❌ | Auth → SMTP Settings → configure Resend/Postmark |
 | E3 | Password reset email delivered to inbox (not spam) | ❌ | Blocked by E2; test after SMTP is configured |
-| E4 | Password reset redirect URL on own domain | ❌ | Update `resetPasswordForEmail` redirect to `https://anglrapp.com/reset-password` |
+| E4 | Password reset redirect URL on own domain | ❌ | Update `resetPasswordForEmail` redirect to `https://fishforgeapp.com/reset-password` |
 | E5 | Email templates customized with brand | ⚠️ | Templates exist in `email-templates/` but must be pasted into Supabase dashboard |
 
 ---
@@ -62,7 +62,7 @@ Status key: ✅ Ready | ⚠️ Needs attention | ❌ Blocker
 | A1 | Production EAS build succeeds | ⚠️ | Run `eas build --profile production --platform android` |
 | A2 | Android target SDK ≥ 34 | ⚠️ | Verify in EAS build output (required since Aug 2024) |
 | A3 | App tested on physical Android device | ⚠️ | Test all flows on a real device before submission |
-| A4 | Play Console app created with `com.anglr` | ⚠️ | Create in Google Play Console |
+| A4 | Play Console app created with `com.fishforgeapp` | ⚠️ | Create in Google Play Console |
 | A5 | Internal testing track tested | ⚠️ | Upload AAB to internal testing, test with ≥ 2 real devices |
 | A6 | App icon and screenshots prepared | ⚠️ | Play Store requires at least 2 phone screenshots |
 | A7 | Short and full description written | ⚠️ | Required for Play Store listing |

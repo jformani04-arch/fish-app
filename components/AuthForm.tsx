@@ -682,7 +682,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
           By creating an account, you agree to our{" "}
           <Text
             style={styles.privacyLink}
-            onPress={() => Linking.openURL("https://anglr-web.vercel.app/privacy")}
+            onPress={() => Linking.openURL("https://fishforgeapp.com/privacy")}
           >
             Privacy Policy
           </Text>

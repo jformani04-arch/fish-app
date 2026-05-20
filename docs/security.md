@@ -35,13 +35,13 @@ The Google Maps API key is embedded in the Android build via `app.json` and will
 
 2. **Application restrictions (Android key)**:
    - Select "Android apps"
-   - Add an entry: package name `com.anglr` + the SHA-1 of your release signing certificate
+   - Add an entry: package name `com.fishforgeapp` + the SHA-1 of your release signing certificate
    - To get the release SHA-1: `keytool -list -v -keystore <your-release.jks> -alias <key-alias>`
    - Or from EAS: `eas credentials` → select Android → view the keystore fingerprint
 
 3. **iOS** (if/when an iOS Maps key is needed):
    - Create a separate key restricted to "iOS apps"
-   - Add bundle ID `com.anglr`
+   - Add bundle ID `com.fishforgeapp`
    - Store it in `app.json` under `expo.ios.config.googleMapsApiKey`
 
 **Do not commit a separate iOS key or any key with billing scope until restrictions are in place.**
@@ -58,7 +58,7 @@ When enabled (recommended for production), unverified accounts cannot access the
 
 ### Password Reset
 
-The reset link goes to the app's deep link scheme (`anglr://auth/reset-password`). The token is valid only once. No re-use is possible because Supabase marks the token as consumed after `updateUser()` is called.
+The reset link goes to the app's deep link scheme (`fishforge://auth/reset-password`). The token is valid only once. No re-use is possible because Supabase marks the token as consumed after `updateUser()` is called.
 
 **Current gap:** The reset email is sent from Supabase's default mail domain. Without custom SMTP, these emails often land in spam. See [launch-checklist.md](launch-checklist.md).
 
@@ -156,12 +156,12 @@ Android permissions declared in `app.json`:
 
 Location permission reason string:
 ```
-"Allow Anglr to use your location to prefill catch location."
+"Allow FishForge to use your location to prefill catch location."
 ```
 
 Camera permission reason string:
 ```
-"Allow Anglr to access your camera"
+"Allow FishForge to access your camera"
 ```
 
 These strings appear in the Android permission prompt. They are accurate and specific.

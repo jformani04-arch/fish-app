@@ -2,7 +2,7 @@
 
 ## What It Does
 
-Catch logging is the core user action in Anglr. A user photographs a fish, optionally scans for species ID, fills in details (size, location, weather, method), and saves the record. The record is immediately visible in the catches list and on the map if coordinates were captured.
+Catch logging is the core user action in FishForge. A user photographs a fish, optionally scans for species ID, fills in details (size, location, weather, method), and saves the record. The record is immediately visible in the catches list and on the map if coordinates were captured.
 
 ---
 

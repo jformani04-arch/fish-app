@@ -92,7 +92,7 @@ Before submitting to Google Play:
 1. Run a production EAS build: `eas build --profile production --platform android`
 2. Download the `.aab` file from the EAS dashboard.
 3. In Google Play Console:
-   - Create a new app with package name `com.anglr`
+   - Create a new app with package name `com.fishforgeapp`
    - Complete the **Data Safety** form (declares: email address, location, photos/videos, user IDs)
    - Upload a **Privacy Policy URL** (must be live)
    - Upload the `.aab` to internal testing first
@@ -102,13 +102,13 @@ Before submitting to Google Play:
 
 ## Custom Domain Setup (Required Before Launch)
 
-1. Register a domain (e.g., `anglrapp.com`).
-2. In Supabase Auth settings: set **Site URL** to `https://anglrapp.com`.
+1. Register a domain (e.g., `fishforgeapp.com`).
+2. In Supabase Auth settings: set **Site URL** to `https://fishforgeapp.com`.
 3. Add `anglr://` to **Redirect URLs** (for deep links).
 4. Configure custom SMTP in Supabase (Auth → SMTP Settings):
    - Use Resend, Postmark, or SendGrid
-   - Set the "From" address to `noreply@anglrapp.com`
-5. Update the password reset redirect to `https://anglrapp.com/reset-password` (a web page that handles the token and deep-links back to the app).
+   - Set the "From" address to `support@fishforgeapp.com`
+5. Update the password reset redirect to `https://fishforgeapp.com/reset-password` (a web page that handles the token and deep-links back to the app).
 
 ---
 
@@ -118,7 +118,7 @@ Before submitting to Google Play:
 ```json
 {
   "android": {
-    "package": "com.anglr",
+    "package": "com.fishforgeapp",
     "edgeToEdgeEnabled": true,
     "predictiveBackGestureEnabled": false,
     "config": {

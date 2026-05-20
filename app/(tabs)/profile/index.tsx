@@ -769,7 +769,7 @@ export default function ProfileScreen() {
                 <Lock color={COLORS.primary} size={20} strokeWidth={2} />
               </View>
               <View>
-                <Text style={styles.actionTitle}>Set Anglr Password</Text>
+                <Text style={styles.actionTitle}>Set FishForge Password</Text>
                 <Text style={styles.actionSub}>Log in with email and password too</Text>
               </View>
             </Pressable>
@@ -817,7 +817,7 @@ export default function ProfileScreen() {
           <Text style={styles.sectionLabel}>Legal</Text>
           <Pressable
             style={styles.actionCard}
-            onPress={() => Linking.openURL("https://anglr-web.vercel.app/privacy")}
+            onPress={() => Linking.openURL("https://fishforgeapp.com/privacy")}
           >
             <View style={styles.actionIcon}>
               <Text style={styles.legalIcon}>🔒</Text>
@@ -837,7 +837,7 @@ export default function ProfileScreen() {
               {modalType === "email"
                 ? "Change Email"
                 : modalType === "set-password"
-                ? "Set Anglr Password"
+                ? "Set FishForge Password"
                 : "Change Password"}
             </Text>
 

@@ -162,7 +162,7 @@ Centered on northeastern Ohio (developer's region). This is the view shown befor
 
 ## Google Maps API Key
 
-The Google Maps API key is embedded in `app.json` under `android.config.googleMaps.apiKey`. This key must have the **Maps SDK for Android** enabled and should be restricted by package name (`com.anglr`) in the Google Cloud Console before Play Store submission.
+The Google Maps API key is embedded in `app.json` under `android.config.googleMaps.apiKey`. This key must have the **Maps SDK for Android** enabled and should be restricted by package name (`com.fishforgeapp`) in the Google Cloud Console before Play Store submission.
 
 ---
 
