@@ -25,11 +25,6 @@
         "foregroundImage": "./assets/images/appIcon.png",
         "backgroundColor": "#111315"
       },
-      "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyCdsxNaAwVRc3NKKptYKAODzfuew2AvuU8"
-        }
-      },
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION",
@@ -52,6 +47,12 @@
       "expo-sqlite",
       "expo-secure-store",
       "expo-web-browser",
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsImpl": "mapbox"
+        }
+      ],
       [
         "expo-location",
         {

@@ -1,5 +1,6 @@
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { FriendsProvider } from "@/auth/FriendsProvider";
+import { SubscriptionProvider } from "@/auth/SubscriptionProvider";
 import { startNetworkMonitor, subscribeToNetworkStatus } from "@/lib/network";
 import { syncPendingCatchLogs } from "@/lib/catches";
 import { supabase } from "@/lib/supabase";
@@ -79,6 +80,7 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
+      <SubscriptionProvider>
       <FriendsProvider>
         <CatchSyncBootstrap />
         <Stack screenOptions={{ headerShown: false }}>
@@ -91,6 +93,7 @@ export default function RootLayout() {
           <Stack.Screen name="log" />
         </Stack>
       </FriendsProvider>
+      </SubscriptionProvider>
     </AuthProvider>
   );
 }

@@ -1,7 +1,10 @@
 import { useAuth } from "@/auth/AuthProvider";
 import { useFriends } from "@/auth/FriendsProvider";
+import { useSubscription } from "@/auth/SubscriptionProvider";
+import { ProBadge } from "@/components/ProBadge";
 import { COLORS } from "@/lib/colors";
 import MapZoomControls from "@/components/MapZoomControls";
+import FishingSpotModal from "@/components/FishingSpotModal";
 import { CatchLog, getUserCatchLogs } from "@/lib/catches";
 import { getUserFacingErrorMessage, withTimeout } from "@/lib/errorHandling";
 import {
@@ -11,14 +14,26 @@ import {
   getFriendMapPins,
   getGlobalMapPins,
 } from "@/lib/friends";
+import { FishingSpot, getUserFishingSpots } from "@/lib/fishingSpots";
 import { isLikelyNetworkError, refreshNetworkStatus } from "@/lib/network";
 import { useIsFocused } from "@react-navigation/native";
+import MapboxGL from "@rnmapbox/maps";
 import { router } from "expo-router";
-import { ArrowLeft, MapPin, RefreshCcw, X } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Bookmark,
+  BookmarkPlus,
+  Flame,
+  MapPin,
+  RefreshCcw,
+  SlidersHorizontal,
+  X,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,11 +41,14 @@ import {
   Text,
   View,
 } from "react-native";
-import ClusterMapView from "react-native-map-clustering";
-import MapView, { Marker, PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+MapboxGL.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN ?? "");
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 type FilterMode = "mine" | "friends" | "global";
+type DateRange = "week" | "month" | "3months" | "year" | null;
 
 type RichPin = {
   id: string;
@@ -41,6 +59,8 @@ type RichPin = {
   date: string;
   weight: string;
   length: string;
+  lure: string;
+  weather: string;
   userId: string | null;
   username: string;
   avatarUrl: string | null;
@@ -55,27 +75,35 @@ type PinState = {
   error: string | null;
 };
 
-const DEFAULT_REGION = {
-  latitude: 41.238,
-  longitude: -81.841,
-  latitudeDelta: 0.3,
-  longitudeDelta: 0.3,
+type GeoPosition = [number, number]; // [longitude, latitude]
+
+type MapBounds = {
+  ne: GeoPosition;
+  sw: GeoPosition;
 };
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const DEFAULT_CENTER: GeoPosition = [-81.841, 41.238];
+const DEFAULT_ZOOM = 9;
 const MAP_LOAD_TIMEOUT_MS = 12000;
 const EMPTY_STATE: PinState = { pins: [], loading: false, error: null };
 const DEBUG = process.env.EXPO_PUBLIC_DEBUG === "1";
 const GLOBAL_REFETCH_DEBOUNCE_MS = 600;
 
-function computeBbox(region: Region): BoundingBox {
-  const halfLat = region.latitudeDelta / 2;
-  const halfLng = region.longitudeDelta / 2;
-  return {
-    minLat: region.latitude - halfLat,
-    maxLat: region.latitude + halfLat,
-    minLng: region.longitude - halfLng,
-    maxLng: region.longitude + halfLng,
-  };
+const DATE_RANGE_OPTIONS: { value: DateRange; label: string }[] = [
+  { value: null, label: "All Time" },
+  { value: "week", label: "Last 7 Days" },
+  { value: "month", label: "Last 30 Days" },
+  { value: "3months", label: "Last 3 Months" },
+  { value: "year", label: "This Year" },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function dlog(message: string, payload?: unknown) {
+  if (!DEBUG) return;
+  console.log(payload === undefined ? `[map] ${message}` : `[map] ${message}`, payload);
 }
 
 function hasValidCoords(catchLog: CatchLog) {
@@ -87,13 +115,14 @@ function hasValidCoords(catchLog: CatchLog) {
   );
 }
 
-function dlog(message: string, payload?: unknown) {
-  if (!DEBUG) return;
-  if (payload === undefined) {
-    console.log(`[map] ${message}`);
-    return;
-  }
-  console.log(`[map] ${message}`, payload);
+function getDateRangeCutoff(range: DateRange): Date | null {
+  if (!range) return null;
+  const now = new Date();
+  if (range === "week") return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  if (range === "month") return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  if (range === "3months") return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+  if (range === "year") return new Date(now.getFullYear(), 0, 1);
+  return null;
 }
 
 function mapMinePin(
@@ -110,6 +139,8 @@ function mapMinePin(
     date: catchLog.date,
     weight: catchLog.weight,
     length: catchLog.length,
+    lure: catchLog.lure,
+    weather: catchLog.weather,
     userId: null,
     username,
     avatarUrl,
@@ -129,12 +160,64 @@ function mapRemotePin(pin: FriendMapPin, source: "friends" | "global"): RichPin 
     date: pin.date,
     weight: pin.weight,
     length: pin.length,
+    lure: pin.lure,
+    weather: pin.weather,
     userId: pin.userId,
     username: pin.username,
     avatarUrl: pin.avatarUrl,
     markerColor: source === "friends" ? "#4F8CFF" : "#22C55E",
     source,
     syncStatus: "synced",
+  };
+}
+
+function pinsToGeoJSON(pins: RichPin[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: pins.map((pin) => ({
+      type: "Feature" as const,
+      id: pin.id,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [pin.longitude, pin.latitude] as GeoPosition,
+      },
+      properties: {
+        id: pin.id,
+        species: pin.species,
+        imageUrl: pin.imageUrl,
+        date: pin.date,
+        weight: pin.weight,
+        length: pin.length,
+        lure: pin.lure,
+        weather: pin.weather,
+        userId: pin.userId ?? "",
+        username: pin.username,
+        avatarUrl: pin.avatarUrl ?? "",
+        markerColor: pin.markerColor,
+        source: pin.source,
+        syncStatus: pin.syncStatus ?? "synced",
+      },
+    })),
+  };
+}
+
+function spotsToGeoJSON(spots: FishingSpot[]) {
+  return {
+    type: "FeatureCollection" as const,
+    features: spots.map((spot) => ({
+      type: "Feature" as const,
+      id: spot.id,
+      geometry: {
+        type: "Point" as const,
+        coordinates: [spot.longitude, spot.latitude] as GeoPosition,
+      },
+      properties: {
+        id: spot.id,
+        name: spot.name,
+        notes: spot.notes ?? "",
+        visibility: spot.visibility,
+      },
+    })),
   };
 }
 
@@ -149,46 +232,72 @@ function getActiveState(
   return globalState;
 }
 
+function boundsFromPins(pins: RichPin[]): { ne: GeoPosition; sw: GeoPosition } | null {
+  if (pins.length === 0) return null;
+  const lngs = pins.map((p) => p.longitude);
+  const lats = pins.map((p) => p.latitude);
+  return {
+    ne: [Math.max(...lngs), Math.max(...lats)],
+    sw: [Math.min(...lngs), Math.min(...lats)],
+  };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function CatchMapScreen() {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<MapboxGL.MapView>(null);
+  const cameraRef = useRef<MapboxGL.Camera>(null);
   const { profile, user } = useAuth();
   const { friends } = useFriends();
+  const { isPro } = useSubscription();
 
+  // Map readiness
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  // Filter mode
   const [filterMode, setFilterMode] = useState<FilterMode>("mine");
   const [selectedFriendId, setSelectedFriendId] = useState<string>("all");
-  const [selectedPin, setSelectedPin] = useState<RichPin | null>(null);
-  const [reloadToken, setReloadToken] = useState(0);
-  const [isOnline, setIsOnline] = useState<boolean | null>(null);
-  const [currentRegion, setCurrentRegion] = useState<Region>(DEFAULT_REGION);
-  const [isMapReady, setIsMapReady] = useState(false);
-  const [isMapLaidOut, setIsMapLaidOut] = useState(false);
 
-  // Tracks the current region without triggering re-renders (used inside async effects)
-  const currentRegionRef = useRef<Region>(DEFAULT_REGION);
-  // Debounce timer for re-fetching global pins when the viewport moves
-  const globalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Increments (debounced) whenever the global viewport changes to re-trigger loadGlobal
+  // Pin data
+  const [mineState, setMineState] = useState<PinState>({ pins: [], loading: true, error: null });
+  const [friendsState, setFriendsState] = useState<PinState>({ pins: [], loading: true, error: null });
+  const [globalState, setGlobalState] = useState<PinState>(EMPTY_STATE);
+
+  // Selected pin callout
+  const [selectedPin, setSelectedPin] = useState<RichPin | null>(null);
+
+  // Fishing spots
+  const [spots, setSpots] = useState<FishingSpot[]>([]);
+  const [showSpots, setShowSpots] = useState(true);
+  const [selectedSpot, setSelectedSpot] = useState<FishingSpot | null>(null);
+  const [spotsLoading, setSpotsLoading] = useState(false);
+  const [addingSpot, setAddingSpot] = useState(false);
+  const [pendingSpotCoords, setPendingSpotCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [editingSpot, setEditingSpot] = useState<FishingSpot | null>(null);
+
+  // Filtering
+  const [showFilterSheet, setShowFilterSheet] = useState(false);
+  const [filterSpecies, setFilterSpecies] = useState<string | null>(null);
+  const [filterDateRange, setFilterDateRange] = useState<DateRange>(null);
+
+  // Heatmap
+  const [showHeatmap, setShowHeatmap] = useState(false);
+
+  // Network + viewport
+  const [isOnline, setIsOnline] = useState<boolean | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const [globalFetchToken, setGlobalFetchToken] = useState(0);
 
-  // Reset map-ready flag whenever the MapView remounts (reloadToken changes).
-  // Without this, onMapReady fires on a fresh instance but setIsMapReady(true)
-  // is a no-op because state was already true, so fitToCoordinates never runs.
-  useEffect(() => {
-    setIsMapReady(false);
-  }, [reloadToken]);
-  const [mineState, setMineState] = useState<PinState>({
-    pins: [],
-    loading: true,
-    error: null,
-  });
-  const [friendsState, setFriendsState] = useState<PinState>({
-    pins: [],
-    loading: true,
-    error: null,
-  });
-  const [globalState, setGlobalState] = useState<PinState>(EMPTY_STATE);
+  // Refs that update without re-renders
+  const currentBoundsRef = useRef<MapBounds | null>(null);
+  const currentZoomRef = useRef(DEFAULT_ZOOM);
+  const currentCenterRef = useRef<GeoPosition>(DEFAULT_CENTER);
+  const globalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Derived state ──────────────────────────────────────────────────────────
 
   const filteredFriendPins = useMemo(() => {
     if (selectedFriendId === "all") return friendsState.pins;
@@ -197,27 +306,60 @@ export default function CatchMapScreen() {
 
   const activeState = getActiveState(filterMode, mineState, friendsState, globalState);
   const activePins = filterMode === "friends" ? filteredFriendPins : activeState.pins;
-  const renderablePins = useMemo(
-    () =>
-      activePins.filter(
-        (pin) =>
-          Number.isFinite(pin.latitude) &&
-          Number.isFinite(pin.longitude)
-      ),
-    [activePins]
-  );
+
+  const renderablePins = useMemo(() => {
+    let pins = activePins.filter(
+      (pin) => Number.isFinite(pin.latitude) && Number.isFinite(pin.longitude)
+    );
+
+    if (filterSpecies) {
+      pins = pins.filter((pin) => pin.species === filterSpecies);
+    }
+
+    if (filterDateRange) {
+      const cutoff = getDateRangeCutoff(filterDateRange);
+      if (cutoff) {
+        pins = pins.filter((pin) => {
+          if (!pin.date) return false;
+          return new Date(pin.date) >= cutoff;
+        });
+      }
+    }
+
+    return pins;
+  }, [activePins, filterSpecies, filterDateRange]);
+
+  // Unique species in the currently active pin set (for filter sheet)
+  const availableSpecies = useMemo(() => {
+    const seen = new Set<string>();
+    for (const pin of activePins) {
+      if (pin.species && pin.species !== "Unknown") seen.add(pin.species);
+    }
+    return [...seen].sort();
+  }, [activePins]);
+
   const hasActiveError = !!activeState.error && activePins.length === 0;
   const isActiveLoading = activeState.loading;
-const activeCoordinates = useMemo(
-    () =>
-      renderablePins.map((pin) => ({
-          latitude: pin.latitude,
-          longitude: pin.longitude,
-        })),
+  const hasActiveFilters = !!filterSpecies || !!filterDateRange;
+
+  const catchesGeoJSON = useMemo(() => pinsToGeoJSON(renderablePins), [renderablePins]);
+  const spotsGeoJSON = useMemo(() => spotsToGeoJSON(spots), [spots]);
+  const heatmapGeoJSON = useMemo(
+    () => ({
+      type: "FeatureCollection" as const,
+      features: renderablePins.map((pin) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [pin.longitude, pin.latitude] as GeoPosition },
+        properties: {},
+      })),
+    }),
     [renderablePins]
   );
 
-  const viewportTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clusterColor =
+    filterMode === "mine" ? "#FD7B41" : filterMode === "friends" ? "#4F8CFF" : "#22C55E";
+
+  // ── Effects: load mine + friends ──────────────────────────────────────────
 
   useEffect(() => {
     if (!isFocused) return;
@@ -248,7 +390,7 @@ const activeCoordinates = useMemo(
         ),
         online
           ? withTimeout(
-              getFriendMapPins(friends.map((friend) => friend.id)),
+              getFriendMapPins(friends.map((f) => f.id)),
               MAP_LOAD_TIMEOUT_MS,
               "Loading your friends' pins took too long."
             )
@@ -262,29 +404,21 @@ const activeCoordinates = useMemo(
         setMineState({
           pins: mineResult.value
             .filter(hasValidCoords)
-            .map((catchLog) =>
-              mapMinePin(
-                catchLog,
-                profile?.username ?? "Me",
-                profile?.avatar_url ?? null
-              )
-            ),
+            .map((c) => mapMinePin(c, profile?.username ?? "Me", profile?.avatar_url ?? null)),
           loading: false,
           error: null,
         });
       } else {
-        const shouldSuppressError =
-          !online && isLikelyNetworkError(mineResult.reason);
-
         setMineState({
           pins: [],
           loading: false,
-          error: shouldSuppressError
-            ? null
-            : getUserFacingErrorMessage(
-                mineResult.reason,
-                "Unable to load your catches on the map."
-              ),
+          error:
+            !online && isLikelyNetworkError(mineResult.reason)
+              ? null
+              : getUserFacingErrorMessage(
+                  mineResult.reason,
+                  "Unable to load your catches on the map."
+                ),
         });
       }
 
@@ -296,43 +430,31 @@ const activeCoordinates = useMemo(
           error: null,
         });
       } else {
-        const shouldSuppressError =
-          !online && isLikelyNetworkError(friendsResult.reason);
-
         setFriendsState({
           pins: [],
           loading: false,
-          error: shouldSuppressError
-            ? null
-            : getUserFacingErrorMessage(
-                friendsResult.reason,
-                "Unable to load your friends' catches."
-              ),
+          error:
+            !online && isLikelyNetworkError(friendsResult.reason)
+              ? null
+              : getUserFacingErrorMessage(
+                  friendsResult.reason,
+                  "Unable to load your friends' catches."
+                ),
         });
       }
     };
 
     void loadMineAndFriends();
+    return () => { cancelled = true; };
+  }, [friends, isFocused, profile?.avatar_url, profile?.username, reloadToken, user]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    friends,
-    isFocused,
-    profile?.avatar_url,
-    profile?.username,
-    reloadToken,
-    user,
-  ]);
+  // ── Effects: load global pins (viewport-based) ────────────────────────────
 
   useEffect(() => {
     if (filterMode !== "global" || !isFocused) return;
     let cancelled = false;
 
     const loadGlobal = async () => {
-      // Only show the loading spinner when there are no existing pins to display.
-      // On bbox re-fetches (pan/zoom), keep showing the current pins until new ones arrive.
       setGlobalState((prev) => ({
         ...prev,
         loading: prev.pins.length === 0,
@@ -344,16 +466,21 @@ const activeCoordinates = useMemo(
       setIsOnline(online);
 
       if (!online) {
-        setGlobalState((prev) => ({
-          pins: prev.pins,
-          loading: false,
-          error: null,
-        }));
+        setGlobalState((prev) => ({ pins: prev.pins, loading: false, error: null }));
         return;
       }
 
       try {
-        const bbox = computeBbox(currentRegionRef.current);
+        const bounds = currentBoundsRef.current;
+        const bbox: BoundingBox | undefined = bounds
+          ? {
+              minLat: bounds.sw[1],
+              maxLat: bounds.ne[1],
+              minLng: bounds.sw[0],
+              maxLng: bounds.ne[0],
+            }
+          : undefined;
+
         const rows = await withTimeout(
           getGlobalMapPins(bbox),
           MAP_LOAD_TIMEOUT_MS,
@@ -362,7 +489,6 @@ const activeCoordinates = useMemo(
 
         if (cancelled) return;
         dlog("global rows loaded", rows.length);
-
         setGlobalState({
           pins: rows.map((pin) => mapRemotePin(pin, "global")),
           loading: false,
@@ -373,104 +499,92 @@ const activeCoordinates = useMemo(
           setGlobalState({
             pins: [],
             loading: false,
-            error: getUserFacingErrorMessage(
-              error,
-              "Unable to load global catches."
-            ),
+            error: getUserFacingErrorMessage(error, "Unable to load global catches."),
           });
         }
       }
     };
 
     void loadGlobal();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [filterMode, isFocused, reloadToken, globalFetchToken]);
+
+  // ── Effects: load fishing spots ───────────────────────────────────────────
+
+  useEffect(() => {
+    if (!user || !isFocused) return;
+    let cancelled = false;
+
+    const loadSpots = async () => {
+      setSpotsLoading(true);
+      try {
+        const data = await getUserFishingSpots(user.id);
+        if (!cancelled) setSpots(data);
+      } catch {
+        // spots failure is non-critical — silently ignore
+      } finally {
+        if (!cancelled) setSpotsLoading(false);
+      }
+    };
+
+    void loadSpots();
+    return () => { cancelled = true; };
+  }, [user, isFocused, reloadToken]);
+
+  // ── Effects: reset selection on filter change ─────────────────────────────
 
   useEffect(() => {
     setSelectedPin(null);
+    setSelectedSpot(null);
   }, [filterMode, selectedFriendId]);
 
-  const updateMapViewport = useCallback(() => {
-    dlog("viewport", {
-      isMapReady,
-      isMapLaidOut,
-      activePins: activePins.length,
-      renderablePins: renderablePins.length,
-      activeCoordinates,
-      filterMode,
-    });
+  // ── Effects: fit viewport to pins after map ready ────────────────────────
 
-    if (!mapRef.current || !isMapReady || !isMapLaidOut || activeCoordinates.length === 0) {
-      return;
-    }
+  useEffect(() => {
+    if (!isMapReady || renderablePins.length === 0) return;
 
-    if (viewportTimeoutRef.current) {
-      clearTimeout(viewportTimeoutRef.current);
-    }
+    if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
 
-    viewportTimeoutRef.current = setTimeout(() => {
-      if (!mapRef.current) return;
-
-      if (activeCoordinates.length === 1) {
-        const [coordinate] = activeCoordinates;
-        mapRef.current.animateToRegion(
-          {
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          },
-          220
-        );
+    viewportTimerRef.current = setTimeout(() => {
+      if (renderablePins.length === 1) {
+        cameraRef.current?.setCamera({
+          centerCoordinate: [renderablePins[0].longitude, renderablePins[0].latitude],
+          zoomLevel: 13,
+          animationDuration: 220,
+        });
         return;
       }
 
-      mapRef.current.fitToCoordinates(activeCoordinates, {
-        edgePadding: { top: 180, right: 48, bottom: 180, left: 48 },
-        animated: true,
-      });
+      const bounds = boundsFromPins(renderablePins);
+      if (bounds) {
+        cameraRef.current?.fitBounds(bounds.ne, bounds.sw, [180, 48, 180, 48], 220);
+      }
     }, 0);
-  }, [
-    activeCoordinates,
-    activePins.length,
-    filterMode,
-    isMapLaidOut,
-    isMapReady,
-    renderablePins.length,
-  ]);
-
-  useEffect(() => {
-    dlog("active pins render", {
-      filterMode,
-      selectedFriendId,
-      count: renderablePins.length,
-      coordinates: activeCoordinates,
-    });
-    updateMapViewport();
 
     return () => {
-      if (viewportTimeoutRef.current) {
-        clearTimeout(viewportTimeoutRef.current);
-        viewportTimeoutRef.current = null;
+      if (viewportTimerRef.current) {
+        clearTimeout(viewportTimerRef.current);
+        viewportTimerRef.current = null;
       }
     };
-  }, [
-    activeCoordinates,
-    activePins,
-    filterMode,
-    isMapReady,
-    renderablePins,
-    selectedFriendId,
-    updateMapViewport,
-  ]);
+  }, [isMapReady, renderablePins]);
 
-  const handleRegionChangeComplete = useCallback(
-    (region: Region) => {
-      currentRegionRef.current = region;
-      setCurrentRegion(region);
+  // ── Callbacks ─────────────────────────────────────────────────────────────
+
+  const handleCameraChanged = useCallback(
+    (state: {
+      properties: {
+        center: GeoPosition;
+        zoom: number;
+        bounds: { ne: GeoPosition; sw: GeoPosition };
+      };
+    }) => {
+      currentCenterRef.current = state.properties.center;
+      currentZoomRef.current = state.properties.zoom;
+      currentBoundsRef.current = {
+        ne: state.properties.bounds.ne,
+        sw: state.properties.bounds.sw,
+      };
 
       if (filterMode === "global" && isFocused) {
         if (globalDebounceRef.current) clearTimeout(globalDebounceRef.current);
@@ -482,51 +596,231 @@ const activeCoordinates = useMemo(
     [filterMode, isFocused]
   );
 
-  const handleZoom = (direction: "in" | "out") => {
-    const factor = direction === "in" ? 0.5 : 2;
-    const nextRegion = {
-      ...currentRegion,
-      latitudeDelta: Math.min(Math.max(currentRegion.latitudeDelta * factor, 0.0025), 90),
-      longitudeDelta: Math.min(Math.max(currentRegion.longitudeDelta * factor, 0.0025), 90),
-    };
-    setCurrentRegion(nextRegion);
-    mapRef.current?.animateToRegion(nextRegion, 220);
-  };
+  const handlePinPress = useCallback(
+    (e: { features: Array<{ id?: string | number; properties: Record<string, unknown> | null }> }) => {
+      const feature = e.features[0];
+      if (!feature || feature.properties?.cluster) return;
+      const pinId = feature.properties?.id as string;
+      const pin = renderablePins.find((p) => p.id === pinId);
+      if (pin) {
+        setSelectedPin(pin);
+        setSelectedSpot(null);
+      }
+    },
+    [renderablePins]
+  );
+
+  const handleSpotPress = useCallback(
+    (e: { features: Array<{ properties: Record<string, unknown> | null }> }) => {
+      const feature = e.features[0];
+      if (!feature) return;
+      const spotId = feature.properties?.id as string;
+      const spot = spots.find((s) => s.id === spotId);
+      if (spot) {
+        setSelectedSpot(spot);
+        setSelectedPin(null);
+      }
+    },
+    [spots]
+  );
+
+  const handleMapPress = useCallback(() => {
+    if (addingSpot) return; // long-press handles spot placement
+    setSelectedPin(null);
+    setSelectedSpot(null);
+  }, [addingSpot]);
+
+  const handleMapLongPress = useCallback(
+    (e: { geometry: { coordinates: GeoPosition } }) => {
+      if (!addingSpot) return;
+      const [lng, lat] = e.geometry.coordinates;
+      setPendingSpotCoords({ latitude: lat, longitude: lng });
+    },
+    [addingSpot]
+  );
+
+  const handleZoom = useCallback((direction: "in" | "out") => {
+    const next =
+      direction === "in"
+        ? Math.min(currentZoomRef.current + 1, 20)
+        : Math.max(currentZoomRef.current - 1, 1);
+    currentZoomRef.current = next;
+    cameraRef.current?.setCamera({ zoomLevel: next, animationDuration: 180 });
+  }, []);
+
+  // ── Spot actions ──────────────────────────────────────────────────────────
+
+  const handleAddSpotFromCenter = useCallback(() => {
+    const [lng, lat] = currentCenterRef.current;
+    setPendingSpotCoords({ latitude: lat, longitude: lng });
+  }, []);
+
+  const handleSpotSaved = useCallback((spot: FishingSpot) => {
+    setSpots((prev) => {
+      const idx = prev.findIndex((s) => s.id === spot.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = spot;
+        return next;
+      }
+      return [spot, ...prev];
+    });
+    setPendingSpotCoords(null);
+    setEditingSpot(null);
+    setAddingSpot(false);
+  }, []);
+
+  const handleSpotDeleted = useCallback((id: string) => {
+    setSpots((prev) => prev.filter((s) => s.id !== id));
+    setSelectedSpot(null);
+    setEditingSpot(null);
+  }, []);
+
+  // ── Layer styles ──────────────────────────────────────────────────────────
+
+  const clusterCircleStyle = useMemo(
+    () => ({
+      circleColor: clusterColor,
+      circleRadius: ["step", ["get", "point_count"], 18, 10, 22, 50, 26] as any,
+      circleOpacity: 0.92,
+      circleStrokeWidth: 2,
+      circleStrokeColor: "rgba(255,255,255,0.22)",
+    }),
+    [clusterColor]
+  );
+
+  const clusterTextStyle = useMemo(
+    () => ({
+      textField: ["get", "point_count_abbreviated"] as any,
+      textFont: ["DIN Offc Pro Medium", "Arial Unicode MS Bold"],
+      textSize: 12,
+      textColor: "#ffffff",
+      textAllowOverlap: true,
+      textIgnorePlacement: true,
+    }),
+    []
+  );
+
+  const singlePinStyle = useMemo(
+    () => ({
+      circleColor: ["get", "markerColor"] as any,
+      circleRadius: 8,
+      circleStrokeWidth: 2,
+      circleStrokeColor: "rgba(255,255,255,0.3)",
+    }),
+    []
+  );
+
+  const spotCircleStyle = useMemo(
+    () => ({
+      circleColor: "rgba(253,123,65,0.15)",
+      circleRadius: 9,
+      circleStrokeWidth: 2.5,
+      circleStrokeColor: COLORS.primary,
+    }),
+    []
+  );
+
+  const heatmapLayerStyle = useMemo(
+    () => ({
+      heatmapWeight: 1,
+      heatmapIntensity: ["interpolate", ["linear"], ["zoom"], 0, 1, 9, 3, 15, 5] as any,
+      heatmapColor: [
+        "interpolate", ["linear"], ["heatmap-density"],
+        0,   "rgba(0,0,0,0)",
+        0.15,"rgba(65,100,200,0.5)",
+        0.4, "rgba(99,200,160,0.8)",
+        0.65,"rgba(253,183,65,0.95)",
+        0.85,"rgba(253,123,65,1.0)",
+        1.0, "rgba(255,255,255,1)",
+      ] as any,
+      heatmapRadius: ["interpolate", ["linear"], ["zoom"], 0, 5, 9, 22, 15, 45] as any,
+      heatmapOpacity: 0.82,
+    }),
+    []
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <View
-      style={styles.container}
-      onLayout={() => setIsMapLaidOut(true)}
-    >
-      <ClusterMapView
-        key={String(reloadToken)}
-        ref={mapRef as any}
+    <View style={styles.container}>
+      <MapboxGL.MapView
+        ref={mapRef}
         style={styles.map}
-        provider={PROVIDER_GOOGLE}
-        initialRegion={DEFAULT_REGION}
-        onMapReady={() => setIsMapReady(true)}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        onPress={() => setSelectedPin(null)}
-        clusterColor={
-          filterMode === "mine"
-            ? "#FD7B41"
-            : filterMode === "friends"
-            ? "#4F8CFF"
-            : "#22C55E"
-        }
-        clusterTextColor="#fff"
-        radius={48}
-        minPoints={3}
+        styleURL="mapbox://styles/mapbox/dark-v11"
+        onDidFinishLoadingMap={() => setIsMapReady(true)}
+        onCameraChanged={handleCameraChanged as any}
+        onPress={handleMapPress as any}
+        onLongPress={handleMapLongPress as any}
+        compassEnabled={false}
+        scaleBarEnabled={false}
+        logoEnabled={false}
+        attributionEnabled={false}
       >
-        {renderablePins.map((pin) => (
-          <Marker
-            key={pin.id}
-            coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
-            pinColor={pin.markerColor}
-            onPress={() => setSelectedPin(pin)}
+        <MapboxGL.Camera
+          ref={cameraRef}
+          defaultSettings={{
+            centerCoordinate: DEFAULT_CENTER,
+            zoomLevel: DEFAULT_ZOOM,
+          }}
+        />
+
+        {/* Catch density heatmap — rendered below pins */}
+        {showHeatmap && renderablePins.length >= 2 && (
+          <MapboxGL.ShapeSource id="heatmap-source" shape={heatmapGeoJSON}>
+            <MapboxGL.HeatmapLayer id="heatmap-layer" style={heatmapLayerStyle} />
+          </MapboxGL.ShapeSource>
+        )}
+
+        {/* Catch markers with clustering */}
+        <MapboxGL.ShapeSource
+          id="catches-source"
+          shape={catchesGeoJSON}
+          cluster
+          clusterRadius={48}
+          clusterMaxZoomLevel={14}
+          onPress={handlePinPress as any}
+        >
+          {/* Cluster circles */}
+          <MapboxGL.CircleLayer
+            id="clusters-circle"
+            filter={["has", "point_count"]}
+            style={clusterCircleStyle}
           />
-        ))}
-      </ClusterMapView>
+          {/* Cluster count labels */}
+          <MapboxGL.SymbolLayer
+            id="clusters-count"
+            filter={["has", "point_count"]}
+            style={clusterTextStyle}
+          />
+          {/* Single pin circles */}
+          <MapboxGL.CircleLayer
+            id="single-pins"
+            filter={["!", ["has", "point_count"]]}
+            style={singlePinStyle}
+          />
+        </MapboxGL.ShapeSource>
+
+        {/* Fishing spots layer */}
+        {showSpots && spots.length > 0 && (
+          <MapboxGL.ShapeSource
+            id="spots-source"
+            shape={spotsGeoJSON}
+            onPress={handleSpotPress as any}
+          >
+            <MapboxGL.CircleLayer id="spots-circle" style={spotCircleStyle} />
+          </MapboxGL.ShapeSource>
+        )}
+      </MapboxGL.MapView>
+
+      {/* Add spot crosshair overlay */}
+      {addingSpot && (
+        <View style={styles.addSpotOverlay} pointerEvents="none">
+          <View style={styles.addSpotHint}>
+            <Text style={styles.addSpotHintText}>Long-press the map to place your spot</Text>
+          </View>
+        </View>
+      )}
 
       <MapZoomControls
         onZoomIn={() => handleZoom("in")}
@@ -534,6 +828,7 @@ const activeCoordinates = useMemo(
         style={{ top: insets.top + (Platform.OS === "android" ? 132 : 128) }}
       />
 
+      {/* Header */}
       <View
         style={[
           styles.header,
@@ -542,24 +837,36 @@ const activeCoordinates = useMemo(
         pointerEvents="box-none"
       >
         <Pressable
-          onPress={() => router.replace("/(tabs)/home")}
+          onPress={() => {
+            if (addingSpot) {
+              setAddingSpot(false);
+            } else {
+              router.replace("/(tabs)/home");
+            }
+          }}
           style={styles.backButton}
         >
           <ArrowLeft color={COLORS.text} size={20} strokeWidth={2.4} />
         </Pressable>
 
         <View style={styles.headerCenter}>
-          <FilterToggle
-            mode={filterMode}
-            onChange={(mode) => {
-              setFilterMode(mode);
-              if (mode !== "friends") {
-                setSelectedFriendId("all");
-              }
-            }}
-          />
+          {!addingSpot && (
+            <FilterToggle
+              mode={filterMode}
+              onChange={(mode) => {
+                setFilterMode(mode);
+                if (mode !== "friends") setSelectedFriendId("all");
+              }}
+            />
+          )}
 
-          {filterMode === "friends" && (
+          {addingSpot && (
+            <View style={styles.addingSpotBanner}>
+              <Text style={styles.addingSpotText}>Adding Spot Mode</Text>
+            </View>
+          )}
+
+          {filterMode === "friends" && !addingSpot && (
             <FriendSelector
               friends={friends}
               selectedFriendId={selectedFriendId}
@@ -568,16 +875,100 @@ const activeCoordinates = useMemo(
           )}
         </View>
 
-        <View style={styles.countBadge}>
-          {isActiveLoading ? (
-            <ActivityIndicator size="small" color={COLORS.primary} />
-          ) : (
-            <MapPin color={COLORS.primary} size={14} strokeWidth={2.2} />
+        <View style={styles.headerActions}>
+          {/* Filter button */}
+          {!addingSpot && (
+            <Pressable
+              onPress={() => setShowFilterSheet(true)}
+              style={[styles.iconButton, hasActiveFilters && styles.iconButtonActive]}
+            >
+              <SlidersHorizontal
+                color={hasActiveFilters ? COLORS.primary : COLORS.text}
+                size={16}
+                strokeWidth={2.2}
+              />
+            </Pressable>
           )}
-          <Text style={styles.countText}>{renderablePins.length}</Text>
+
+          {/* Heatmap toggle */}
+          {!addingSpot && (
+            <Pressable
+              onPress={() => isPro ? setShowHeatmap((v) => !v) : router.push("/pro")}
+              style={[styles.iconButton, showHeatmap && styles.iconButtonActive]}
+            >
+              <Flame
+                color={showHeatmap ? COLORS.primary : isPro ? COLORS.text : COLORS.textSecondary}
+                size={16}
+                strokeWidth={2.2}
+              />
+              {!isPro && (
+                <View style={styles.heatmapProBadge}>
+                  <ProBadge size="xs" />
+                </View>
+              )}
+            </Pressable>
+          )}
+
+          {/* Spots toggle / add spot */}
+          {!addingSpot && (
+            <Pressable
+              onPress={() => {
+                if (addingSpot) {
+                  setAddingSpot(false);
+                } else {
+                  setAddingSpot(true);
+                  setShowSpots(true);
+                }
+              }}
+              style={[styles.iconButton, addingSpot && styles.iconButtonActive]}
+            >
+              <BookmarkPlus
+                color={addingSpot ? COLORS.primary : COLORS.text}
+                size={16}
+                strokeWidth={2.2}
+              />
+            </Pressable>
+          )}
+
+          {addingSpot && (
+            <Pressable onPress={handleAddSpotFromCenter} style={styles.placeButton}>
+              <Text style={styles.placeButtonText}>Place Here</Text>
+            </Pressable>
+          )}
+
+          {/* Pin count badge */}
+          {!addingSpot && (
+            <View style={styles.countBadge}>
+              {isActiveLoading ? (
+                <ActivityIndicator size="small" color={COLORS.primary} />
+              ) : (
+                <MapPin color={COLORS.primary} size={14} strokeWidth={2.2} />
+              )}
+              <Text style={styles.countText}>{renderablePins.length}</Text>
+            </View>
+          )}
         </View>
       </View>
 
+      {/* Spots visibility toggle */}
+      {!addingSpot && spots.length > 0 && (
+        <Pressable
+          onPress={() => setShowSpots((v) => !v)}
+          style={[
+            styles.spotsToggle,
+            { top: insets.top + (Platform.OS === "android" ? 132 : 128) + 100 },
+          ]}
+        >
+          <Bookmark
+            color={showSpots ? COLORS.primary : COLORS.textSecondary}
+            size={16}
+            strokeWidth={2.2}
+            fill={showSpots ? COLORS.primary : "none"}
+          />
+        </Pressable>
+      )}
+
+      {/* Loading overlay */}
       {isActiveLoading && (
         <View style={[styles.overlayCard, { top: insets.top + 78 }]}>
           <ActivityIndicator color={COLORS.primary} />
@@ -585,13 +976,14 @@ const activeCoordinates = useMemo(
         </View>
       )}
 
+      {/* Error overlay */}
       {!isActiveLoading && hasActiveError && (
         <View style={[styles.overlayCard, { top: insets.top + 78 }]}>
           <Text style={styles.overlayTitle}>Map data couldn&apos;t load</Text>
           <Text style={styles.overlayText}>{activeState.error}</Text>
           <Pressable
             style={styles.overlayButton}
-            onPress={() => setReloadToken((value) => value + 1)}
+            onPress={() => setReloadToken((v) => v + 1)}
           >
             <RefreshCcw color="#000" size={14} strokeWidth={2.2} />
             <Text style={styles.overlayButtonText}>Try Again</Text>
@@ -599,17 +991,31 @@ const activeCoordinates = useMemo(
         </View>
       )}
 
+      {/* Empty overlay */}
       {!isActiveLoading && !hasActiveError && renderablePins.length === 0 && (
         <View style={[styles.overlayCard, { top: insets.top + 78 }]}>
           <Text style={styles.overlayTitle}>
-            {getEmptyTitle(filterMode, selectedFriendId)}
+            {getEmptyTitle(filterMode, selectedFriendId, hasActiveFilters)}
           </Text>
           <Text style={styles.overlayText}>
-            {getEmptyMessage(filterMode, selectedFriendId, isOnline)}
+            {getEmptyMessage(filterMode, selectedFriendId, isOnline, hasActiveFilters)}
           </Text>
+          {hasActiveFilters && (
+            <Pressable
+              style={styles.overlayButton}
+              onPress={() => {
+                setFilterSpecies(null);
+                setFilterDateRange(null);
+              }}
+            >
+              <X color="#000" size={14} strokeWidth={2.2} />
+              <Text style={styles.overlayButtonText}>Clear Filters</Text>
+            </Pressable>
+          )}
         </View>
       )}
 
+      {/* Catch callout card */}
       {selectedPin && (
         <View style={[styles.calloutCard, { paddingBottom: insets.bottom + 12 }]}>
           <View style={styles.calloutRow}>
@@ -637,21 +1043,21 @@ const activeCoordinates = useMemo(
                   {selectedPin.species || "Unknown Species"}
                 </Text>
                 {(!!selectedPin.length || !!selectedPin.weight) && (
-                  <Text style={styles.calloutMeasure}>
-                    {[selectedPin.length, selectedPin.weight]
-                      .filter(Boolean)
-                      .join(" · ")}
+                  <Text style={styles.calloutMeta}>
+                    {[selectedPin.length, selectedPin.weight].filter(Boolean).join(" · ")}
                   </Text>
                 )}
                 {!!selectedPin.date && (
-                  <Text style={styles.calloutDate}>{selectedPin.date}</Text>
+                  <Text style={styles.calloutMeta}>{selectedPin.date}</Text>
                 )}
-                {selectedPin.userId === null && !!selectedPin.username && (
-                  <Text style={styles.calloutUsername}>@{selectedPin.username}</Text>
+                {(!!selectedPin.lure || !!selectedPin.weather) && (
+                  <Text style={styles.calloutMeta}>
+                    {[selectedPin.lure, selectedPin.weather].filter(Boolean).join(" · ")}
+                  </Text>
                 )}
                 {selectedPin.syncStatus === "pending" && (
                   <Text style={styles.pendingSyncText}>
-                    Saved offline. Syncing when you&apos;re back online.
+                    Saved offline — syncing when online.
                   </Text>
                 )}
               </View>
@@ -687,40 +1093,90 @@ const activeCoordinates = useMemo(
           )}
         </View>
       )}
+
+      {/* Spot callout card */}
+      {selectedSpot && (
+        <View style={[styles.calloutCard, { paddingBottom: insets.bottom + 12 }]}>
+          <View style={styles.calloutRow}>
+            <View style={[styles.calloutImage, styles.spotIconBox]}>
+              <Bookmark color={COLORS.primary} size={22} strokeWidth={1.8} />
+            </View>
+            <View style={styles.calloutDetails}>
+              <Text style={styles.calloutSpecies} numberOfLines={1}>
+                {selectedSpot.name}
+              </Text>
+              {!!selectedSpot.notes && (
+                <Text style={styles.calloutMeta} numberOfLines={2}>
+                  {selectedSpot.notes}
+                </Text>
+              )}
+              <Text style={styles.calloutMeta}>
+                {selectedSpot.latitude.toFixed(4)}, {selectedSpot.longitude.toFixed(4)}
+              </Text>
+            </View>
+            <View style={styles.calloutActionsColumn}>
+              <Pressable
+                style={styles.calloutClose}
+                onPress={() => setSelectedSpot(null)}
+              >
+                <X color={COLORS.textSecondary} size={18} strokeWidth={2} />
+              </Pressable>
+              <Pressable
+                style={[styles.calloutClose, { marginTop: 6 }]}
+                onPress={() => {
+                  setEditingSpot(selectedSpot);
+                  setSelectedSpot(null);
+                }}
+              >
+                <SlidersHorizontal color={COLORS.textSecondary} size={16} strokeWidth={2} />
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Filter sheet */}
+      {showFilterSheet && (
+        <FilterSheet
+          availableSpecies={availableSpecies}
+          filterSpecies={filterSpecies}
+          filterDateRange={filterDateRange}
+          onSpeciesChange={setFilterSpecies}
+          onDateRangeChange={setFilterDateRange}
+          onClose={() => setShowFilterSheet(false)}
+          insetBottom={insets.bottom}
+        />
+      )}
+
+      {/* Add spot modal */}
+      {pendingSpotCoords && (
+        <FishingSpotModal
+          mode="add"
+          latitude={pendingSpotCoords.latitude}
+          longitude={pendingSpotCoords.longitude}
+          onSave={handleSpotSaved}
+          onClose={() => {
+            setPendingSpotCoords(null);
+            setAddingSpot(false);
+          }}
+        />
+      )}
+
+      {/* Edit spot modal */}
+      {editingSpot && (
+        <FishingSpotModal
+          mode="edit"
+          spot={editingSpot}
+          onSave={handleSpotSaved}
+          onDelete={handleSpotDeleted}
+          onClose={() => setEditingSpot(null)}
+        />
+      )}
     </View>
   );
 }
 
-function getEmptyTitle(filterMode: FilterMode, selectedFriendId: string) {
-  if (filterMode === "mine") return "No catches to display";
-  if (filterMode === "global") return "No global catches to display";
-  if (selectedFriendId !== "all") return "No public catches for this friend";
-  return "No friend catches to display";
-}
-
-function getEmptyMessage(
-  filterMode: FilterMode,
-  selectedFriendId: string,
-  isOnline: boolean | null
-) {
-  if (isOnline === false) {
-    if (filterMode === "mine") {
-      return "You're offline. Catches saved on this device will appear here when available.";
-    }
-    return "You're offline. Friends and global catches will load again when the connection returns.";
-  }
-
-  if (filterMode === "mine") {
-    return "Log a catch with a location and it will appear here.";
-  }
-  if (filterMode === "global") {
-    return "Public catches from across the app will appear here.";
-  }
-  if (selectedFriendId !== "all") {
-    return "Try another friend or switch back to All Friends.";
-  }
-  return "Friends' public catches will appear here.";
-}
+// ── Sub-components ────────────────────────────────────────────────────────────
 
 function FilterToggle({
   mode,
@@ -737,9 +1193,7 @@ function FilterToggle({
           style={[toggleStyles.btn, mode === option && toggleStyles.active]}
           onPress={() => onChange(option)}
         >
-          <Text
-            style={[toggleStyles.label, mode === option && toggleStyles.labelActive]}
-          >
+          <Text style={[toggleStyles.label, mode === option && toggleStyles.labelActive]}>
             {option === "mine" ? "Mine" : option === "friends" ? "Friends" : "Global"}
           </Text>
         </Pressable>
@@ -755,7 +1209,7 @@ function FriendSelector({
 }: {
   friends: FriendProfile[];
   selectedFriendId: string;
-  onSelect: (friendId: string) => void;
+  onSelect: (id: string) => void;
 }) {
   return (
     <ScrollView
@@ -765,36 +1219,21 @@ function FriendSelector({
       style={styles.friendSelector}
     >
       <Pressable
-        style={[
-          styles.friendChip,
-          selectedFriendId === "all" && styles.friendChipActive,
-        ]}
+        style={[styles.friendChip, selectedFriendId === "all" && styles.friendChipActive]}
         onPress={() => onSelect("all")}
       >
-        <Text
-          style={[
-            styles.friendChipText,
-            selectedFriendId === "all" && styles.friendChipTextActive,
-          ]}
-        >
+        <Text style={[styles.friendChipText, selectedFriendId === "all" && styles.friendChipTextActive]}>
           All Friends
         </Text>
       </Pressable>
-
       {friends.map((friend) => (
         <Pressable
           key={friend.id}
-          style={[
-            styles.friendChip,
-            selectedFriendId === friend.id && styles.friendChipActive,
-          ]}
+          style={[styles.friendChip, selectedFriendId === friend.id && styles.friendChipActive]}
           onPress={() => onSelect(friend.id)}
         >
           <Text
-            style={[
-              styles.friendChipText,
-              selectedFriendId === friend.id && styles.friendChipTextActive,
-            ]}
+            style={[styles.friendChipText, selectedFriendId === friend.id && styles.friendChipTextActive]}
             numberOfLines={1}
           >
             {friend.username}
@@ -804,6 +1243,134 @@ function FriendSelector({
     </ScrollView>
   );
 }
+
+function FilterSheet({
+  availableSpecies,
+  filterSpecies,
+  filterDateRange,
+  onSpeciesChange,
+  onDateRangeChange,
+  onClose,
+  insetBottom,
+}: {
+  availableSpecies: string[];
+  filterSpecies: string | null;
+  filterDateRange: DateRange;
+  onSpeciesChange: (s: string | null) => void;
+  onDateRangeChange: (d: DateRange) => void;
+  onClose: () => void;
+  insetBottom: number;
+}) {
+  return (
+    <Modal transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <View style={[styles.sheetContainer, { paddingBottom: insetBottom + 16 }]}>
+        <View style={styles.sheetHandle} />
+
+        <View style={styles.sheetHeader}>
+          <Text style={styles.sheetTitle}>Filter Catches</Text>
+          <Pressable onPress={onClose} style={styles.sheetClose}>
+            <X color={COLORS.textSecondary} size={18} strokeWidth={2} />
+          </Pressable>
+        </View>
+
+        {/* Date range */}
+        <Text style={styles.sheetSectionLabel}>Time Range</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterChipRow}
+        >
+          {DATE_RANGE_OPTIONS.map((opt) => (
+            <Pressable
+              key={String(opt.value)}
+              style={[
+                styles.filterChip,
+                filterDateRange === opt.value && styles.filterChipActive,
+              ]}
+              onPress={() => onDateRangeChange(opt.value)}
+            >
+              <Text
+                style={[
+                  styles.filterChipText,
+                  filterDateRange === opt.value && styles.filterChipTextActive,
+                ]}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+
+        {/* Species */}
+        {availableSpecies.length > 0 && (
+          <>
+            <Text style={[styles.sheetSectionLabel, { marginTop: 16 }]}>Species</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterChipRow}
+            >
+              <Pressable
+                style={[styles.filterChip, filterSpecies === null && styles.filterChipActive]}
+                onPress={() => onSpeciesChange(null)}
+              >
+                <Text
+                  style={[styles.filterChipText, filterSpecies === null && styles.filterChipTextActive]}
+                >
+                  All
+                </Text>
+              </Pressable>
+              {availableSpecies.map((sp) => (
+                <Pressable
+                  key={sp}
+                  style={[styles.filterChip, filterSpecies === sp && styles.filterChipActive]}
+                  onPress={() => onSpeciesChange(filterSpecies === sp ? null : sp)}
+                >
+                  <Text
+                    style={[styles.filterChipText, filterSpecies === sp && styles.filterChipTextActive]}
+                  >
+                    {sp}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        )}
+      </View>
+    </Modal>
+  );
+}
+
+// ── Empty state helpers ───────────────────────────────────────────────────────
+
+function getEmptyTitle(mode: FilterMode, selectedFriendId: string, hasFilters: boolean) {
+  if (hasFilters) return "No catches match your filters";
+  if (mode === "mine") return "No catches to display";
+  if (mode === "global") return "No global catches here";
+  if (selectedFriendId !== "all") return "No catches for this friend";
+  return "No friend catches to display";
+}
+
+function getEmptyMessage(
+  mode: FilterMode,
+  selectedFriendId: string,
+  isOnline: boolean | null,
+  hasFilters: boolean
+) {
+  if (hasFilters) return "Try adjusting your species or date filters.";
+  if (isOnline === false) {
+    return mode === "mine"
+      ? "You're offline. Catches saved on this device will appear here."
+      : "You're offline. Catches will load when the connection returns.";
+  }
+  if (mode === "mine") return "Log a catch with a location and it will appear here.";
+  if (mode === "global") return "Public catches from across the app will appear here.";
+  if (selectedFriendId !== "all") return "Try another friend or switch back to All Friends.";
+  return "Friends' public catches will appear here.";
+}
+
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const toggleStyles = StyleSheet.create({
   wrap: {
@@ -819,27 +1386,15 @@ const toggleStyles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 7,
   },
-  active: {
-    backgroundColor: COLORS.primary,
-  },
-  label: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  labelActive: {
-    color: "#000",
-  },
+  active: { backgroundColor: COLORS.primary },
+  label: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" },
+  labelActive: { color: "#000" },
 });
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  map: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  map: { flex: 1 },
+
   header: {
     position: "absolute",
     top: 0,
@@ -849,7 +1404,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     paddingHorizontal: 16,
     paddingBottom: 12,
-    gap: 12,
+    gap: 10,
   },
   backButton: {
     width: 42,
@@ -861,9 +1416,30 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.18)",
   },
-  headerCenter: {
-    flex: 1,
+  headerCenter: { flex: 1, gap: 8 },
+  headerActions: {
+    flexDirection: "column",
+    alignItems: "center",
     gap: 8,
+  },
+  iconButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(60,64,68,0.88)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+  },
+  iconButtonActive: {
+    backgroundColor: "rgba(253,123,65,0.18)",
+    borderColor: "rgba(253,123,65,0.5)",
+  },
+  heatmapProBadge: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
   },
   countBadge: {
     flexDirection: "row",
@@ -878,11 +1454,58 @@ const styles = StyleSheet.create({
     minWidth: 54,
     justifyContent: "center",
   },
-  countText: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "700",
+  countText: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+
+  addingSpotBanner: {
+    backgroundColor: "rgba(253,123,65,0.15)",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderWidth: 1,
+    borderColor: "rgba(253,123,65,0.4)",
+    alignItems: "center",
   },
+  addingSpotText: { color: COLORS.primary, fontSize: 13, fontWeight: "700" },
+
+  placeButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    minWidth: 100,
+    alignItems: "center",
+  },
+  placeButtonText: { color: "#000", fontWeight: "700", fontSize: 13 },
+
+  spotsToggle: {
+    position: "absolute",
+    right: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(17,19,21,0.9)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+
+  addSpotOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: "center",
+    justifyContent: "flex-end",
+    paddingBottom: 120,
+  },
+  addSpotHint: {
+    backgroundColor: "rgba(17,19,21,0.92)",
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.15)",
+  },
+  addSpotHintText: { color: COLORS.textSecondary, fontSize: 13 },
+
   overlayCard: {
     position: "absolute",
     left: 16,
@@ -917,18 +1540,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     marginTop: 4,
   },
-  overlayButtonText: {
-    color: "#000",
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  friendSelector: {
-    maxHeight: 38,
-  },
-  friendSelectorContent: {
-    gap: 8,
-    paddingRight: 12,
-  },
+  overlayButtonText: { color: "#000", fontWeight: "700", fontSize: 13 },
+
+  friendSelector: { maxHeight: 38 },
+  friendSelectorContent: { gap: 8, paddingRight: 12 },
   friendChip: {
     borderRadius: 999,
     borderWidth: 1,
@@ -941,14 +1556,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(79,140,255,0.22)",
     borderColor: "rgba(79,140,255,0.55)",
   },
-  friendChipText: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  friendChipTextActive: {
-    color: COLORS.text,
-  },
+  friendChipText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: "600" },
+  friendChipTextActive: { color: COLORS.text },
+
   calloutCard: {
     position: "absolute",
     bottom: 0,
@@ -968,17 +1578,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 12,
   },
-  calloutRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  calloutContent: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
+  calloutRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  calloutContent: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   calloutImage: {
     width: 68,
     height: 68,
@@ -990,32 +1591,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  calloutDetails: {
-    flex: 1,
-    gap: 3,
+  spotIconBox: {
+    backgroundColor: "rgba(253,123,65,0.12)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  calloutSpecies: {
-    color: COLORS.text,
-    fontSize: 17,
-    fontWeight: "700",
-  },
-  calloutMeasure: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-  },
-  calloutDate: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-  },
-  calloutUsername: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-  },
-  pendingSyncText: {
-    color: "#FDBA74",
-    fontSize: 12,
-    fontWeight: "600",
-  },
+  calloutDetails: { flex: 1, gap: 3 },
+  calloutActionsColumn: { gap: 0, alignItems: "center" },
+  calloutSpecies: { color: COLORS.text, fontSize: 17, fontWeight: "700" },
+  calloutMeta: { color: COLORS.textSecondary, fontSize: 13 },
+  pendingSyncText: { color: "#FDBA74", fontSize: 12, fontWeight: "600" },
   calloutClose: {
     width: 34,
     height: 34,
@@ -1047,22 +1632,72 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  calloutAvatarInitial: {
-    color: COLORS.primary,
-    fontWeight: "700",
-    fontSize: 14,
+  calloutAvatarInitial: { color: COLORS.primary, fontWeight: "700", fontSize: 14 },
+  calloutProfileCopy: { flex: 1 },
+  calloutAnglerName: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+  calloutAnglerSub: { color: COLORS.primary, fontSize: 11, marginTop: 1 },
+
+  // Filter sheet
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.5)",
   },
-  calloutProfileCopy: {
-    flex: 1,
+  sheetContainer: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
   },
-  calloutAnglerName: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "700",
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignSelf: "center",
+    marginBottom: 16,
   },
-  calloutAnglerSub: {
-    color: COLORS.primary,
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 18,
+  },
+  sheetTitle: { flex: 1, color: COLORS.text, fontSize: 16, fontWeight: "700" },
+  sheetClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(221,220,219,0.1)",
+  },
+  sheetSectionLabel: {
+    color: COLORS.textSecondary,
     fontSize: 11,
-    marginTop: 1,
+    fontWeight: "600",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginBottom: 10,
   },
+  filterChipRow: { gap: 8, paddingBottom: 4 },
+  filterChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.14)",
+    backgroundColor: "rgba(221,220,219,0.06)",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  filterChipActive: {
+    backgroundColor: "rgba(253,123,65,0.15)",
+    borderColor: "rgba(253,123,65,0.45)",
+  },
+  filterChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" },
+  filterChipTextActive: { color: COLORS.primary },
 });

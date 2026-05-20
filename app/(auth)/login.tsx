@@ -1,14 +1,19 @@
 import AuthForm from "@/components/AuthForm";
 import { COLORS } from "@/lib/colors";
 import { router } from "expo-router";
+import { ChevronLeft } from "lucide-react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
-      <Pressable onPress={() => router.back()} style={styles.backButton}>
-        <Text style={styles.backText}>←</Text>
+      <Pressable
+        onPress={() => router.back()}
+        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        hitSlop={8}
+      >
+        <ChevronLeft color={COLORS.text} size={22} strokeWidth={2} />
       </Pressable>
 
       <View style={styles.header}>
@@ -48,17 +53,18 @@ const styles = StyleSheet.create({
   },
 
   backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.12)",
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    backgroundColor: "rgba(221,220,219,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(221,220,219,0.18)",
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 16,
   },
 
-  backText: {
-    color: COLORS.text,
-    fontSize: 18,
+  pressed: {
+    opacity: 0.65,
   },
 });

@@ -489,7 +489,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
           )}
 
           <TextInput
-            placeholder={isLogin ? "Email or Username" : "hello@company.com"}
+            placeholder={isLogin ? "Email or Username" : "your@email.com"}
             placeholderTextColor={COLORS.textSecondary}
             style={styles.input}
             autoCapitalize="none"

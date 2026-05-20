@@ -22,10 +22,12 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 
 export default function FavoritesScreen() {
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const [catches, setCatches] = useState<CatchLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -77,7 +79,7 @@ export default function FavoritesScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 16 }]}
       showsVerticalScrollIndicator={false}
     >
       <View style={styles.header}>
@@ -208,7 +210,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 24,
-    paddingTop: 48,
     paddingBottom: 32,
   },
   header: {

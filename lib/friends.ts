@@ -368,6 +368,8 @@ export type FriendMapPin = {
   date: string;
   weight: string;
   length: string;
+  lure: string;
+  weather: string;
   userId: string;
   username: string;
   avatarUrl: string | null;
@@ -427,6 +429,8 @@ export async function getFriendMapPins(
       date: (row.date as string | null) ?? "",
       weight: (row.weight as string | null) ?? "",
       length: (row.length as string | null) ?? "",
+      lure: (row.lure as string | null) ?? "",
+      weather: (row.weather as string | null) ?? "",
       userId: row.user_id as string,
       username: (profile?.username as string | null) ?? "Angler",
       avatarUrl: (profile?.avatar_url as string | null) ?? null,
@@ -492,6 +496,8 @@ export async function getGlobalMapPins(
       date: (row.date as string | null) ?? "",
       weight: (row.weight as string | null) ?? "",
       length: (row.length as string | null) ?? "",
+      lure: (row.lure as string | null) ?? "",
+      weather: (row.weather as string | null) ?? "",
       userId: row.user_id as string,
       username: (profile?.username as string | null) ?? "Angler",
       avatarUrl: (profile?.avatar_url as string | null) ?? null,

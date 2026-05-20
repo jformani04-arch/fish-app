@@ -16,6 +16,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type SpeciesListItem = {
   name: string;
@@ -32,6 +33,7 @@ const LOCAL_SPECIES: SpeciesListItem[] = FRESHWATER_SPECIES.map((name) => ({
 }));
 
 export default function ArticlesScreen() {
+  const insets = useSafeAreaInsets();
   const [query, setQuery] = useState("");
   const [speciesImagesBySlug, setSpeciesImagesBySlug] = useState<
     Record<string, string>
@@ -80,7 +82,7 @@ export default function ArticlesScreen() {
   }, [query, speciesList]);
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
       <View style={styles.header}>
         <Pressable onPress={() => router.replace("/(tabs)/home")} style={styles.backButton}>
           <ArrowLeft color={COLORS.text} size={20} strokeWidth={2.4} />
@@ -150,7 +152,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingTop: 48,
     paddingHorizontal: 16,
   },
   header: {

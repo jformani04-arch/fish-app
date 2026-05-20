@@ -1,6 +1,7 @@
 import * as Location from "expo-location";
 import { COLORS } from "@/lib/colors";
 import MapZoomControls from "@/components/MapZoomControls";
+import MapboxGL from "@rnmapbox/maps";
 import { Crosshair, Navigation, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -12,7 +13,6 @@ import {
   Text,
   View,
 } from "react-native";
-import MapView, { PROVIDER_GOOGLE, Region } from "react-native-maps";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface LocationResult {
@@ -28,22 +28,19 @@ interface Props {
   onClose: () => void;
 }
 
-const DEFAULT_REGION: Region = {
-  latitude: 39.5,
-  longitude: -98.35,
-  latitudeDelta: 30,
-  longitudeDelta: 30,
-};
+const DEFAULT_CENTER: [number, number] = [-98.35, 39.5];
+const DEFAULT_ZOOM = 3.5;
 
-async function getLocationName(
-  coords: { latitude: number; longitude: number }
-): Promise<string> {
+async function getLocationName(coords: {
+  latitude: number;
+  longitude: number;
+}): Promise<string> {
   try {
     const results = await Location.reverseGeocodeAsync(coords);
     if (!results.length) return "";
     const r = results[0];
-    const locality = r.city || r.subregion || r.region || "";
-    const area = r.region || r.country || "";
+    const locality = r.city ?? r.subregion ?? r.region ?? "";
+    const area = r.region ?? r.country ?? "";
     return [locality, area].filter(Boolean).join(", ");
   } catch {
     return "";
@@ -57,37 +54,38 @@ export default function LocationPickerModal({
   onClose,
 }: Props) {
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const cameraRef = useRef<MapboxGL.Camera>(null);
+  const currentZoomRef = useRef(DEFAULT_ZOOM);
+
   const [center, setCenter] = useState<{ latitude: number; longitude: number }>(
-    initialCoords ?? { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude }
-  );
-  const [currentRegion, setCurrentRegion] = useState<Region>(
-    initialCoords
-      ? { ...initialCoords, latitudeDelta: 0.08, longitudeDelta: 0.08 }
-      : DEFAULT_REGION
+    initialCoords ?? { latitude: DEFAULT_CENTER[1], longitude: DEFAULT_CENTER[0] }
   );
   const [geocoding, setGeocoding] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
 
-  // Center map on open
   useEffect(() => {
-    if (!visible) return;
-    const init = initialCoords ?? null;
-    const coords = init ?? { latitude: DEFAULT_REGION.latitude, longitude: DEFAULT_REGION.longitude };
-    setCenter(coords);
-    setCurrentRegion(
-      init
-        ? { ...init, latitudeDelta: 0.08, longitudeDelta: 0.08 }
-        : DEFAULT_REGION
-    );
-    setTimeout(() => {
-      mapRef.current?.animateToRegion(
-        init
-          ? { ...init, latitudeDelta: 0.08, longitudeDelta: 0.08 }
-          : DEFAULT_REGION,
-        350
-      );
-    }, 300);
-  }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!visible || !mapReady) return;
+    const target = initialCoords ?? null;
+    if (target) {
+      setCenter({ latitude: target.latitude, longitude: target.longitude });
+      setTimeout(() => {
+        cameraRef.current?.setCamera({
+          centerCoordinate: [target.longitude, target.latitude],
+          zoomLevel: 13,
+          animationDuration: 350,
+        });
+      }, 100);
+    } else {
+      setCenter({ latitude: DEFAULT_CENTER[1], longitude: DEFAULT_CENTER[0] });
+      setTimeout(() => {
+        cameraRef.current?.setCamera({
+          centerCoordinate: DEFAULT_CENTER,
+          zoomLevel: DEFAULT_ZOOM,
+          animationDuration: 350,
+        });
+      }, 100);
+    }
+  }, [visible, mapReady]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleUseCurrentLocation = async () => {
     try {
@@ -101,12 +99,13 @@ export default function LocationPickerModal({
         longitude: loc.coords.longitude,
       };
       setCenter(coords);
-      mapRef.current?.animateToRegion(
-        { ...coords, latitudeDelta: 0.05, longitudeDelta: 0.05 },
-        500
-      );
+      cameraRef.current?.setCamera({
+        centerCoordinate: [coords.longitude, coords.latitude],
+        zoomLevel: 14,
+        animationDuration: 500,
+      });
     } catch {
-      // location not available — silently ignore
+      // location unavailable — silently ignore
     }
   };
 
@@ -114,40 +113,45 @@ export default function LocationPickerModal({
     setGeocoding(true);
     const name = await getLocationName(center);
     setGeocoding(false);
-    onConfirm({
-      latitude: center.latitude,
-      longitude: center.longitude,
-      locationName: name,
-    });
+    onConfirm({ latitude: center.latitude, longitude: center.longitude, locationName: name });
   };
 
   const handleZoom = (direction: "in" | "out") => {
-    const factor = direction === "in" ? 0.5 : 2;
-    const nextRegion = {
-      ...currentRegion,
-      latitudeDelta: Math.min(Math.max(currentRegion.latitudeDelta * factor, 0.0025), 90),
-      longitudeDelta: Math.min(Math.max(currentRegion.longitudeDelta * factor, 0.0025), 90),
-    };
-    setCurrentRegion(nextRegion);
-    mapRef.current?.animateToRegion(nextRegion, 220);
+    const next =
+      direction === "in"
+        ? Math.min(currentZoomRef.current + 1, 20)
+        : Math.max(currentZoomRef.current - 1, 1);
+    currentZoomRef.current = next;
+    cameraRef.current?.setCamera({ zoomLevel: next, animationDuration: 180 });
   };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="fullScreen">
       <View style={styles.container}>
-        <MapView
-          ref={mapRef}
+        <MapboxGL.MapView
           style={styles.map}
-          provider={PROVIDER_GOOGLE}
-          initialRegion={DEFAULT_REGION}
-          showsUserLocation
-          showsMyLocationButton={false}
-          showsCompass={false}
-          onRegionChangeComplete={(region) => {
-            setCenter({ latitude: region.latitude, longitude: region.longitude });
-            setCurrentRegion(region);
+          styleURL="mapbox://styles/mapbox/dark-v11"
+          onDidFinishLoadingMap={() => setMapReady(true)}
+          onCameraChanged={(state) => {
+            const [lng, lat] = state.properties.center;
+            setCenter({ latitude: lat, longitude: lng });
+            currentZoomRef.current = state.properties.zoom;
           }}
-        />
+          compassEnabled={false}
+          scaleBarEnabled={false}
+          logoEnabled={false}
+          attributionEnabled={false}
+        >
+          <MapboxGL.Camera
+            ref={cameraRef}
+            defaultSettings={{
+              centerCoordinate: initialCoords
+                ? [initialCoords.longitude, initialCoords.latitude]
+                : DEFAULT_CENTER,
+              zoomLevel: initialCoords ? 13 : DEFAULT_ZOOM,
+            }}
+          />
+        </MapboxGL.MapView>
 
         {/* Fixed crosshair at map center */}
         <View style={styles.crosshair} pointerEvents="none">
@@ -168,10 +172,7 @@ export default function LocationPickerModal({
           <View style={styles.titleWrap}>
             <Text style={styles.title}>Pick Location</Text>
           </View>
-          <Pressable
-            onPress={handleUseCurrentLocation}
-            style={styles.iconButton}
-          >
+          <Pressable onPress={handleUseCurrentLocation} style={styles.iconButton}>
             <Navigation color={COLORS.primary} size={18} strokeWidth={2.4} />
           </Pressable>
         </View>
@@ -200,11 +201,9 @@ export default function LocationPickerModal({
             { paddingBottom: Math.max(insets.bottom, 16) + 8 },
           ]}
         >
-          <View style={styles.coordsRow}>
-            <Text style={styles.coordsText}>
-              {center.latitude.toFixed(5)}, {center.longitude.toFixed(5)}
-            </Text>
-          </View>
+          <Text style={styles.coordsText}>
+            {center.latitude.toFixed(5)}, {center.longitude.toFixed(5)}
+          </Text>
           <Pressable
             style={[styles.confirmButton, geocoding && { opacity: 0.7 }]}
             onPress={handleConfirm}
@@ -231,7 +230,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
 
-  /* ── Crosshair ────────────────────────────────── */
   crosshair: {
     position: "absolute",
     top: "50%",
@@ -240,7 +238,6 @@ const styles = StyleSheet.create({
     marginLeft: -20,
   },
 
-  /* ── Floating header ──────────────────────────── */
   header: {
     position: "absolute",
     top: 0,
@@ -279,7 +276,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.2,
   },
 
-  /* ── Hint chip ────────────────────────────────── */
   hintChip: {
     position: "absolute",
     alignSelf: "center",
@@ -295,7 +291,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  /* ── Bottom card ──────────────────────────────── */
   bottomCard: {
     position: "absolute",
     bottom: 0,
@@ -309,12 +304,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.12)",
   },
-  coordsRow: {
-    alignItems: "center",
-  },
   coordsText: {
     color: COLORS.textSecondary,
     fontSize: 12,
+    textAlign: "center",
     marginTop: 3,
   },
   confirmButton: {

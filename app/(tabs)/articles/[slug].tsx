@@ -16,6 +16,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const SECTION_ORDER = [
   "quick_id",
@@ -41,6 +42,7 @@ function humanizeSlug(slug: string) {
 }
 
 export default function SpeciesArticleScreen() {
+  const insets = useSafeAreaInsets();
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const normalizedSlug = useMemo(
     () => (typeof slug === "string" ? slug.trim().toLowerCase() : ""),
@@ -170,7 +172,7 @@ export default function SpeciesArticleScreen() {
     <ScrollView
       ref={scrollRef}
       style={styles.container}
-      contentContainerStyle={styles.contentContainer}
+      contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 12 }]}
       showsVerticalScrollIndicator={false}
     >
       <View>
@@ -251,7 +253,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   contentContainer: {
-    paddingTop: 48,
     paddingHorizontal: 16,
     paddingBottom: 40,
   },

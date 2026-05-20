@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem \"c:\\\\Users\\\\jform\\\\projects\\\\Anglr\\\\fish-app\\\\assets\\\\images\\\\\" | ForEach-Object { \"$\\($_.Name\\) - $\\([math]::Round\\($_.Length/1KB,1\\)\\) KB\" })"
+    ]
+  }
+}

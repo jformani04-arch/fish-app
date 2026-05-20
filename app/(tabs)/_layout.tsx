@@ -32,6 +32,8 @@ export default function TabsLayout() {
       <Stack.Screen name="friends/index" />
       <Stack.Screen name="user/[userId]" />
       <Stack.Screen name="user/catch/[catchId]" />
+      <Stack.Screen name="analytics" />
+      <Stack.Screen name="pro" />
     </Stack>
   );
 }

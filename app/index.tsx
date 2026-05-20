@@ -102,12 +102,6 @@ const styles = StyleSheet.create({
   topSection: {
     alignItems: "center",
   },
-  iconContainer: {
-    marginBottom: 56,
-    padding: 0,
-    borderRadius: 0,
-    backgroundColor: "transparent",
-  },
   appName: {
     fontSize: 60,
     fontWeight: "700",

@@ -40,6 +40,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 const DEBUG = process.env.EXPO_PUBLIC_DEBUG === "1";
 
@@ -67,7 +68,11 @@ const CatchCard = memo(function CatchCard({
       onPress={() => onPress(catchLog.id)}
       onLongPress={() => onLongPress(catchLog.id)}
       delayLongPress={300}
-      style={[styles.card, isSelected && styles.cardSelected]}
+      style={({ pressed }) => [
+        styles.card,
+        isSelected && styles.cardSelected,
+        pressed && !isSelected && styles.cardPressed,
+      ]}
     >
       <View style={styles.cardRow}>
         {/* Thumbnail */}
@@ -178,6 +183,7 @@ const CatchCard = memo(function CatchCard({
 
 export default function CatchesScreen() {
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
   const [catches, setCatches] = useState<CatchLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -445,6 +451,7 @@ export default function CatchesScreen() {
         style={styles.container}
         contentContainerStyle={[
           styles.contentContainer,
+          { paddingTop: insets.top + 16 },
           selectionMode && styles.contentContainerWithBar,
         ]}
         showsVerticalScrollIndicator={false}
@@ -803,7 +810,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 16,
-    paddingTop: 48,
     paddingBottom: 32,
   },
   contentContainerWithBar: {
@@ -1055,12 +1061,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "transparent",
-  },
-  emptyIconImage: {
-    width: 84,
-    height: 84,
-    resizeMode: "contain",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
   },
   emptyTitle: {
     color: COLORS.text,
@@ -1081,6 +1084,9 @@ const styles = StyleSheet.create({
   cardSelected: {
     borderColor: "rgba(253,123,65,0.5)",
     backgroundColor: "rgba(253,123,65,0.06)",
+  },
+  cardPressed: {
+    opacity: 0.72,
   },
   cardRow: {
     flexDirection: "row",
@@ -1105,11 +1111,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  fallbackThumbIcon: {
-    width: 34,
-    height: 34,
-    resizeMode: "contain",
   },
   selectionOverlay: {
     position: "absolute",
@@ -1186,16 +1187,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-  },
-  metaIcon: {
-    width: 22,
-    height: 22,
-    resizeMode: "contain",
-  },
-  metaIconLarge: {
-    width: 26,
-    height: 26,
-    resizeMode: "contain",
   },
   lengthWeightRow: {
     marginTop: 4,

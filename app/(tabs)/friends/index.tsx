@@ -62,8 +62,8 @@ export default function FriendsScreen() {
       try {
         const results = await searchUsers(searchQuery);
         setSearchResults(results);
-      } catch (err: any) {
-        console.log("[friends] search error", err);
+      } catch {
+        // silently clear results on search error
       } finally {
         setSearching(false);
       }
@@ -81,8 +81,8 @@ export default function FriendsScreen() {
         if (!user) return;
         const sent = await getSentRequests(user.id);
         setSentRequests(sent);
-      } catch (err) {
-        console.log("[friends] sent requests error", err);
+      } catch {
+        // non-critical: sent requests will just show empty
       }
     };
     loadSent();
@@ -136,8 +136,8 @@ export default function FriendsScreen() {
         refreshFriends(),
         user ? getSentRequests(user.id).then(setSentRequests) : Promise.resolve(),
       ]);
-    } catch (err) {
-      console.log("[friends] refresh error", err);
+    } catch {
+      // refresh failed silently — existing data stays
     } finally {
       setRefreshing(false);
     }

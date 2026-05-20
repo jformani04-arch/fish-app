@@ -1,13 +1,17 @@
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/auth/AuthProvider";
 import { useFriends } from "@/auth/FriendsProvider";
+import { useSubscription } from "@/auth/SubscriptionProvider";
+import { ProBadge } from "@/components/ProBadge";
 import { COLORS } from "@/lib/colors";
 import { CatchLog, getCatchStats, getUserCatchLogs } from "@/lib/catches";
 import { FeedItem, getFriendFeed } from "@/lib/friends";
 import { router } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
 import { useCallback, useEffect, useState } from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  BarChart2,
   BookOpen,
   Calendar,
   Clock,
@@ -38,7 +42,9 @@ import Avatar from "@/components/Avatar";
 export default function Home() {
   const { profile, loading } = useAuth();
   const { friends, pendingRequests } = useFriends();
+  const { isPro } = useSubscription();
   const isFocused = useIsFocused();
+  const insets = useSafeAreaInsets();
 
   const [stats, setStats] = useState({ totalCatches: 0, speciesCount: 0 });
   const [recentCatch, setRecentCatch] = useState<CatchLog | null>(null);
@@ -78,8 +84,7 @@ export default function Home() {
     try {
       const items = await getFriendFeed(friends.map((f) => f.id));
       setFeedItems(items);
-    } catch (err) {
-      console.log("[home] feed error", err);
+    } catch {
       setFeedItems([]);
     } finally {
       setFeedLoading(false);
@@ -142,9 +147,12 @@ export default function Home() {
       }
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
         <View style={styles.headerLeft}>
-          <Pressable onPress={() => router.push("/profile")}>
+          <Pressable
+            onPress={() => router.push("/profile")}
+            style={({ pressed }) => pressed && { opacity: 0.75 }}
+          >
             <Avatar
               uri={profile?.avatar_url}
               username={profile?.username}
@@ -160,7 +168,11 @@ export default function Home() {
           </View>
         </View>
 
-        <Pressable style={styles.signOutButton} onPress={handleSignOut}>
+        <Pressable
+          style={({ pressed }) => [styles.signOutButton, pressed && { opacity: 0.65 }]}
+          onPress={handleSignOut}
+          hitSlop={8}
+        >
           <LogOut size={20} color={COLORS.textSecondary} />
         </Pressable>
       </View>
@@ -170,7 +182,7 @@ export default function Home() {
       <Text style={styles.sectionLabel}>Quick Actions</Text>
       <View style={styles.rowGrid}>
         <Pressable
-          style={[styles.actionBubble, { flex: 1 }]}
+          style={({ pressed }) => [styles.actionBubble, { flex: 1 }, pressed && styles.cardPressed]}
           onPress={() => router.push("/catches")}
         >
           <View style={styles.actionIconSmall}>
@@ -180,7 +192,7 @@ export default function Home() {
         </Pressable>
 
         <Pressable
-          style={[styles.actionBubble, { flex: 1 }]}
+          style={({ pressed }) => [styles.actionBubble, { flex: 1 }, pressed && styles.cardPressed]}
           onPress={() => router.push("/favorites")}
         >
           <View style={styles.actionIconSmall}>
@@ -191,7 +203,7 @@ export default function Home() {
       </View>
 
       <Pressable
-        style={styles.fullBubble}
+        style={({ pressed }) => [styles.fullBubble, pressed && styles.cardPressed]}
         onPress={() => router.push("/articles")}
       >
         <View style={styles.fullBubbleIconWrap}>
@@ -204,7 +216,7 @@ export default function Home() {
       </Pressable>
 
       <Pressable
-        style={styles.fullBubble}
+        style={({ pressed }) => [styles.fullBubble, pressed && styles.cardPressed]}
         onPress={() => router.push("/map")}
       >
         <View style={styles.fullBubbleIconWrap}>
@@ -218,7 +230,7 @@ export default function Home() {
 
       {/* Friends bubble with notification badge */}
       <Pressable
-        style={styles.fullBubble}
+        style={({ pressed }) => [styles.fullBubble, pressed && styles.cardPressed]}
         onPress={() => router.push("/friends")}
       >
         <View style={[styles.fullBubbleIconWrap, styles.badgeWrap]}>
@@ -238,6 +250,22 @@ export default function Home() {
               ? `${pendingRequests.length} pending request${pendingRequests.length > 1 ? "s" : ""}`
               : "Connect with other anglers"}
           </Text>
+        </View>
+      </Pressable>
+
+      <Pressable
+        style={({ pressed }) => [styles.fullBubble, pressed && styles.cardPressed]}
+        onPress={() => router.push("/analytics")}
+      >
+        <View style={styles.fullBubbleIconWrap}>
+          <BarChart2 size={24} color={COLORS.primary} strokeWidth={2} />
+        </View>
+        <View style={styles.fullBubbleContent}>
+          <View style={styles.analyticsLabelRow}>
+            <Text style={styles.actionText}>Analytics</Text>
+            {!isPro && <ProBadge size="xs" />}
+          </View>
+          <Text style={styles.actionSubtext}>Insights from your catches</Text>
         </View>
       </Pressable>
 
@@ -323,7 +351,9 @@ export default function Home() {
         </View>
       ) : friends.length === 0 ? (
         <View style={styles.feedEmptyCard}>
-          <Users size={32} color={COLORS.textSecondary} strokeWidth={1.5} />
+          <View style={styles.feedEmptyIconWrap}>
+            <Users size={28} color={COLORS.textSecondary} strokeWidth={1.5} />
+          </View>
           <Text style={styles.feedEmptyTitle}>No friends yet</Text>
           <Text style={styles.feedEmptyText}>
             Add friends to see their catches here.
@@ -337,7 +367,9 @@ export default function Home() {
         </View>
       ) : feedItems.length === 0 ? (
         <View style={styles.feedEmptyCard}>
-          <Fish size={32} color={COLORS.textSecondary} strokeWidth={1.5} />
+          <View style={styles.feedEmptyIconWrap}>
+            <Fish size={28} color={COLORS.textSecondary} strokeWidth={1.5} />
+          </View>
           <Text style={styles.feedEmptyTitle}>Nothing yet</Text>
           <Text style={styles.feedEmptyText}>
             Your friends haven&apos;t logged any public catches yet.
@@ -348,7 +380,7 @@ export default function Home() {
           {feedItems.map((item) => (
             <Pressable
               key={item.id}
-              style={styles.feedCard}
+              style={({ pressed }) => [styles.feedCard, pressed && styles.cardPressed]}
               onPress={() => router.push(`/user/${item.userId}`)}
             >
               {/* Angler row */}
@@ -394,6 +426,10 @@ export default function Home() {
 }
 
 const styles = StyleSheet.create({
+  cardPressed: {
+    opacity: 0.72,
+  },
+
   loadingContainer: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -414,7 +450,6 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    paddingTop: 48,
     paddingBottom: 24,
     flexDirection: "row",
     justifyContent: "space-between",
@@ -426,25 +461,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
     flex: 1,
-  },
-
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
-
-  avatarFallback: {
-    width: 52,
-    height: 52,
-    borderRadius: 999,
-    backgroundColor: "rgba(253,123,65,0.2)",
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-    justifyContent: "center",
-    alignItems: "center",
   },
 
   headerText: {
@@ -508,12 +524,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  actionIconImageSmall: {
-    width: 30,
-    height: 30,
-    resizeMode: "contain",
-  },
-
   fullBubble: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -536,13 +546,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
-  fullBubbleIconImage: {
-    width: 26,
-    height: 26,
-    resizeMode: "contain",
-  },
   fullBubbleContent: {
     flex: 1,
+  },
+  analyticsLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
 
   badgeWrap: {
@@ -589,11 +599,6 @@ const styles = StyleSheet.create({
 
   statIcon: {
     marginRight: 8,
-  },
-  statIconImage: {
-    width: 26,
-    height: 26,
-    resizeMode: "contain",
   },
 
   statLabel: {
@@ -642,12 +647,6 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 11,
   },
-  activityIconImage: {
-    width: 26,
-    height: 26,
-    resizeMode: "contain",
-  },
-
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -669,6 +668,17 @@ const styles = StyleSheet.create({
   },
 
   // Feed
+  feedEmptyIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginBottom: 4,
+  },
   feedEmptyCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 20,

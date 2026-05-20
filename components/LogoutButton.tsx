@@ -6,9 +6,7 @@ export default function LogoutButton() {
     const { error } = await supabase.auth.signOut();
     // Navigation is handled by the SIGNED_OUT listener in app/_layout.tsx.
     // No router.replace here to avoid two competing navigation calls.
-    if (error) {
-      console.log("Logout error:", error.message);
-    }
+    // navigation handled by SIGNED_OUT listener in app/_layout.tsx
   };
 
   return (

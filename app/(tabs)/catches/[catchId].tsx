@@ -8,6 +8,7 @@ import {
   updateCatchLog,
   uploadCatchPhoto,
 } from "@/lib/catches";
+import { getUserPinGroups, upsertPinGroup } from "@/lib/pinGroups";
 import * as Location from "expo-location";
 import { supabase } from "@/lib/supabase";
 import { getProfile, LengthUnit, TempUnit, WeightUnit } from "@/lib/profile";
@@ -30,6 +31,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FRESHWATER_SPECIES, getSpeciesMatches } from "@/lib/freshwaterSpecies";
 import { checkText, validateImageAsset } from "@/lib/moderation";
 
@@ -255,6 +257,7 @@ function buildCatchSnapshot(
 export default function EditCatchScreen() {
   const { catchId, imageUri: initialImageUri } = useLocalSearchParams<{ catchId: string; imageUri?: string }>();
   const isNew = catchId === "new";
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -279,6 +282,8 @@ export default function EditCatchScreen() {
   const [methodQuery, setMethodQuery] = useState("");
   const [showMethodMatches, setShowMethodMatches] = useState(false);
   const [pinGroupValue, setPinGroupValue] = useState("");
+  const [showPinGroupMatches, setShowPinGroupMatches] = useState(false);
+  const [userPinGroups, setUserPinGroups] = useState<string[]>([]);
   const [timeValue, setTimeValue] = useState(formatCurrentTime());
   const [showPicker, setShowPicker] = useState(false);
   const [pickerCoords, setPickerCoords] = useState<{
@@ -332,6 +337,15 @@ export default function EditCatchScreen() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      getUserPinGroups(user.id)
+        .then(setUserPinGroups)
+        .catch(() => {});
+    });
+  }, []);
 
   useEffect(() => {
     const load = async () => {
@@ -483,6 +497,18 @@ export default function EditCatchScreen() {
         pickerCoords
       );
       setSaveStatus("saved");
+
+      // Register the group name in the pin_groups table for future autocomplete
+      if (form.pinGroup) {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (!user || !form.pinGroup) return;
+          upsertPinGroup(user.id, form.pinGroup).then(() => {
+            setUserPinGroups((prev) =>
+              prev.includes(form.pinGroup!) ? prev : [...prev, form.pinGroup!].sort()
+            );
+          }).catch(() => {});
+        });
+      }
     } catch (err: any) {
       setSaveStatus("error");
       setError(err?.message ?? "Unable to update catch.");
@@ -513,6 +539,14 @@ export default function EditCatchScreen() {
         latitude: pickerCoords?.latitude ?? null,
         longitude: pickerCoords?.longitude ?? null,
       });
+
+      // Register the group name in the pin_groups table for future autocomplete
+      if (payload.pinGroup && result.syncStatus === "synced") {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (!user || !payload.pinGroup) return;
+          upsertPinGroup(user.id, payload.pinGroup).catch(() => {});
+        });
+      }
 
       if (result.syncStatus === "pending") {
         Alert.alert(
@@ -663,7 +697,7 @@ export default function EditCatchScreen() {
     >
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.contentContainer}
+        contentContainerStyle={[styles.contentContainer, { paddingTop: insets.top + 16 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -1093,11 +1127,16 @@ export default function EditCatchScreen() {
               onChangeText={(v) => {
                 setPinGroupValue(v);
                 setField("pinGroup", v.trim() || null);
+                setShowPinGroupMatches(true);
               }}
+              onFocus={() => setShowPinGroupMatches(true)}
               onBlur={() => {
-                const normalized = normalizeGroupName(pinGroupValue);
-                setPinGroupValue(normalized);
-                setField("pinGroup", normalized || null);
+                setTimeout(() => {
+                  const normalized = normalizeGroupName(pinGroupValue);
+                  setPinGroupValue(normalized);
+                  setField("pinGroup", normalized || null);
+                  setShowPinGroupMatches(false);
+                }, 150);
               }}
             />
             {!!pinGroupValue && (
@@ -1106,12 +1145,40 @@ export default function EditCatchScreen() {
                 onPress={() => {
                   setPinGroupValue("");
                   setField("pinGroup", null);
+                  setShowPinGroupMatches(false);
                 }}
               >
                 <X color={COLORS.textSecondary} size={14} strokeWidth={2.5} />
               </Pressable>
             )}
           </View>
+          {showPinGroupMatches && userPinGroups.length > 0 && (() => {
+            const q = pinGroupValue.trim().toLowerCase();
+            const matches = userPinGroups
+              .filter((g) => !q || g.toLowerCase().includes(q))
+              .slice(0, 6);
+            if (matches.length === 0) return null;
+            return (
+              <View style={styles.speciesOptions}>
+                {matches.map((group) => (
+                  <Pressable
+                    key={group}
+                    style={styles.speciesOption}
+                    onPress={() => {
+                      setPinGroupValue(group);
+                      setField("pinGroup", group);
+                      setShowPinGroupMatches(false);
+                    }}
+                  >
+                    <View style={styles.pinGroupSuggestionRow}>
+                      <Tag color={COLORS.primary} size={12} strokeWidth={2} />
+                      <Text style={styles.speciesOptionText}>{group}</Text>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            );
+          })()}
           {!!form.pinGroup && (
             <View style={styles.pinGroupPreview}>
               <Tag color={COLORS.primary} size={12} strokeWidth={2} />
@@ -1264,7 +1331,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   contentContainer: {
-    paddingTop: 48,
     paddingHorizontal: 16,
     paddingBottom: 40,
   },
@@ -1711,6 +1777,11 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 12,
     fontWeight: "600",
+  },
+  pinGroupSuggestionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
   },
   centerScreen: {
     flex: 1,

@@ -37,6 +37,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type ModalType = "none" | "email" | "password" | "set-password";
 type ProfileDraft = {
@@ -502,6 +503,8 @@ export default function ProfileScreen() {
     );
   };
 
+  const insets = useSafeAreaInsets();
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -512,9 +515,16 @@ export default function ProfileScreen() {
 
   return (
     <>
-      <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 16 }]}
+      >
         <View style={styles.header}>
-          <Pressable onPress={() => router.replace("/(tabs)/home")} style={styles.backButton}>
+          <Pressable
+            onPress={() => router.replace("/(tabs)/home")}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+            hitSlop={8}
+          >
             <ArrowLeft color={COLORS.text} size={20} strokeWidth={2.5} />
           </Pressable>
           <View>
@@ -539,7 +549,7 @@ export default function ProfileScreen() {
                 )}
                 <Pressable
                   onPress={changeAvatar}
-                  style={[styles.cameraButton, uploadingAvatar && { opacity: 0.7 }]}
+                  style={({ pressed }) => [styles.cameraButton, (uploadingAvatar || pressed) && { opacity: 0.7 }]}
                   disabled={uploadingAvatar}
                 >
                   <Camera color={COLORS.text} size={14} strokeWidth={2} />
@@ -720,7 +730,7 @@ export default function ProfileScreen() {
         <View>
           <Text style={styles.sectionLabel}>Security</Text>
           <Pressable
-            style={[styles.actionCard, isGoogleOnly && styles.actionCardDisabled]}
+            style={({ pressed }) => [styles.actionCard, isGoogleOnly && styles.actionCardDisabled, !isGoogleOnly && pressed && styles.pressed]}
             onPress={isGoogleOnly ? undefined : handleChangeEmailPress}
             disabled={isGoogleOnly}
           >
@@ -742,7 +752,7 @@ export default function ProfileScreen() {
           </Pressable>
 
           <Pressable
-            style={[styles.actionCard, isGoogleOnly && styles.actionCardDisabled]}
+            style={({ pressed }) => [styles.actionCard, isGoogleOnly && styles.actionCardDisabled, !isGoogleOnly && pressed && styles.pressed]}
             onPress={isGoogleOnly ? undefined : handleChangePasswordPress}
             disabled={isGoogleOnly}
           >
@@ -764,7 +774,10 @@ export default function ProfileScreen() {
           </Pressable>
 
           {isGoogleOnly && (
-            <Pressable style={styles.actionCard} onPress={() => setModalType("set-password")}>
+            <Pressable
+              style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+              onPress={() => setModalType("set-password")}
+            >
               <View style={styles.actionIcon}>
                 <Lock color={COLORS.primary} size={20} strokeWidth={2} />
               </View>
@@ -776,7 +789,10 @@ export default function ProfileScreen() {
           )}
 
           {authProviders.includes("email") && !authProviders.includes("google") && (
-            <Pressable style={styles.actionCard} onPress={handleLinkGoogle}>
+            <Pressable
+              style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+              onPress={handleLinkGoogle}
+            >
               <View style={styles.actionIcon}>
                 <Mail color={COLORS.primary} size={20} strokeWidth={2} />
               </View>
@@ -791,7 +807,10 @@ export default function ProfileScreen() {
 
         <View>
           <Text style={styles.sectionLabel}>Account</Text>
-          <Pressable style={styles.actionCard} onPress={handleSignOut}>
+          <Pressable
+            style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
+            onPress={handleSignOut}
+          >
             <View style={styles.actionIcon}>
               <LogOut color={COLORS.primary} size={20} strokeWidth={2} />
             </View>
@@ -800,7 +819,10 @@ export default function ProfileScreen() {
             </View>
           </Pressable>
 
-          <Pressable style={styles.deleteCard} onPress={handleDeleteAccount}>
+          <Pressable
+            style={({ pressed }) => [styles.deleteCard, pressed && styles.pressed]}
+            onPress={handleDeleteAccount}
+          >
             <View style={styles.deleteIcon}>
               <Trash2 color="#ef4444" size={20} strokeWidth={2} />
             </View>
@@ -816,11 +838,11 @@ export default function ProfileScreen() {
         <View>
           <Text style={styles.sectionLabel}>Legal</Text>
           <Pressable
-            style={styles.actionCard}
+            style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
             onPress={() => Linking.openURL("https://fishforgeapp.com/privacy")}
           >
             <View style={styles.actionIcon}>
-              <Text style={styles.legalIcon}>🔒</Text>
+              <Lock color={COLORS.textSecondary} size={20} strokeWidth={2} />
             </View>
             <View>
               <Text style={styles.actionTitle}>Privacy Policy</Text>
@@ -920,7 +942,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 24,
-    paddingTop: 32,
     paddingBottom: 32,
     gap: 18,
   },
@@ -935,9 +956,13 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(221,220,219,0.1)",
+    backgroundColor: "rgba(221,220,219,0.08)",
     borderWidth: 1,
-    borderColor: "rgba(221,220,219,0.2)",
+    borderColor: "rgba(221,220,219,0.18)",
+  },
+
+  pressed: {
+    opacity: 0.65,
   },
   title: {
     color: COLORS.text,
@@ -951,16 +976,16 @@ const styles = StyleSheet.create({
   sectionLabel: {
     color: COLORS.textSecondary,
     fontSize: 11,
-    letterSpacing: 1.4,
+    letterSpacing: 1.6,
     textTransform: "uppercase",
     marginBottom: 8,
     fontWeight: "600",
   },
   card: {
-    backgroundColor: "rgba(221,220,219,0.08)",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.15)",
-    borderRadius: 24,
+    backgroundColor: "rgba(221,220,219,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
     padding: 16,
   },
   profileRow: {
@@ -1019,10 +1044,10 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   input: {
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.1)",
-    backgroundColor: "rgba(221,220,219,0.1)",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    backgroundColor: "rgba(221,220,219,0.07)",
     color: COLORS.text,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -1058,10 +1083,10 @@ const styles = StyleSheet.create({
   },
   // Stats card
   statsCard: {
-    backgroundColor: "rgba(221,220,219,0.08)",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.15)",
-    borderRadius: 24,
+    backgroundColor: "rgba(221,220,219,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -1089,10 +1114,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   prefCard: {
-    backgroundColor: "rgba(221,220,219,0.08)",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.15)",
-    borderRadius: 24,
+    backgroundColor: "rgba(221,220,219,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
     padding: 16,
     marginBottom: 10,
     flexDirection: "row",
@@ -1112,9 +1137,9 @@ const styles = StyleSheet.create({
   segment: {
     flexDirection: "row",
     borderRadius: 999,
-    backgroundColor: "rgba(221,220,219,0.1)",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.1)",
+    backgroundColor: "rgba(221,220,219,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
     padding: 2,
   },
   segmentBtn: {
@@ -1134,10 +1159,10 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   actionCard: {
-    backgroundColor: "rgba(221,220,219,0.08)",
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.15)",
-    borderRadius: 24,
+    backgroundColor: "rgba(221,220,219,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.10)",
+    borderRadius: 20,
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -1171,18 +1196,11 @@ const styles = StyleSheet.create({
   actionTextDisabled: {
     color: COLORS.textSecondary,
   },
-  securityNotice: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: -2,
-    marginBottom: 10,
-  },
   deleteCard: {
-    backgroundColor: "rgba(220,38,38,0.1)",
-    borderWidth: 2,
-    borderColor: "rgba(220,38,38,0.3)",
-    borderRadius: 24,
+    backgroundColor: "rgba(220,38,38,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(220,38,38,0.25)",
+    borderRadius: 20,
     padding: 16,
     flexDirection: "row",
     alignItems: "center",
@@ -1205,9 +1223,6 @@ const styles = StyleSheet.create({
     color: "#fca5a5",
     fontSize: 12,
   },
-  legalIcon: {
-    fontSize: 18,
-  },
   modalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.55)",
@@ -1217,11 +1232,11 @@ const styles = StyleSheet.create({
   },
   modalCard: {
     width: "100%",
-    borderRadius: 24,
-    backgroundColor: COLORS.background,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.15)",
-    padding: 16,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    padding: 20,
   },
   modalTitle: {
     color: COLORS.text,
