@@ -27,6 +27,7 @@ import {
   MapPin,
   RefreshCcw,
   SlidersHorizontal,
+  Tag,
   X,
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -67,6 +68,7 @@ type RichPin = {
   markerColor: string;
   source: FilterMode;
   syncStatus?: CatchLog["syncStatus"];
+  pinGroup?: string | null;
 };
 
 type PinState = {
@@ -147,6 +149,7 @@ function mapMinePin(
     markerColor: catchLog.syncStatus === "pending" ? "#FDBA74" : "#FD7B41",
     source: "mine",
     syncStatus: catchLog.syncStatus,
+    pinGroup: catchLog.pinGroup ?? null,
   };
 }
 
@@ -285,6 +288,9 @@ export default function CatchMapScreen() {
   // Heatmap
   const [showHeatmap, setShowHeatmap] = useState(false);
 
+  // Pin group filter (mine-mode only)
+  const [filterPinGroup, setFilterPinGroup] = useState<string | null>(null);
+
   // Network + viewport
   const [isOnline, setIsOnline] = useState<boolean | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
@@ -296,6 +302,9 @@ export default function CatchMapScreen() {
   const currentCenterRef = useRef<GeoPosition>(DEFAULT_CENTER);
   const globalDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Tracks whether the camera should auto-fit on the next renderablePins update.
+  // Set to true on initial load and on filterMode changes; consumed once fit executes.
+  const fitRequestedRef = useRef(true);
 
   // ── Derived state ──────────────────────────────────────────────────────────
 
@@ -326,8 +335,14 @@ export default function CatchMapScreen() {
       }
     }
 
+    if (filterPinGroup) {
+      pins = pins.filter(
+        (pin) => pin.pinGroup?.toLowerCase() === filterPinGroup.toLowerCase()
+      );
+    }
+
     return pins;
-  }, [activePins, filterSpecies, filterDateRange]);
+  }, [activePins, filterSpecies, filterDateRange, filterPinGroup]);
 
   // Unique species in the currently active pin set (for filter sheet)
   const availableSpecies = useMemo(() => {
@@ -338,9 +353,21 @@ export default function CatchMapScreen() {
     return [...seen].sort();
   }, [activePins]);
 
+  // Unique pin groups from the mine data set — shown regardless of current filter
+  // so the user can switch between groups without losing the list.
+  const availablePinGroups = useMemo(() => {
+    if (filterMode !== "mine") return [];
+    const seen = new Set<string>();
+    for (const pin of mineState.pins) {
+      if (pin.pinGroup) seen.add(pin.pinGroup);
+    }
+    return [...seen].sort();
+  }, [filterMode, mineState.pins]);
+
   const hasActiveError = !!activeState.error && activePins.length === 0;
   const isActiveLoading = activeState.loading;
-  const hasActiveFilters = !!filterSpecies || !!filterDateRange;
+  const hasActiveFilters = !!filterSpecies || !!filterDateRange || !!filterPinGroup;
+  const activeFilterCount = (filterSpecies ? 1 : 0) + (filterDateRange ? 1 : 0) + (filterPinGroup ? 1 : 0);
 
   const catchesGeoJSON = useMemo(() => pinsToGeoJSON(renderablePins), [renderablePins]);
   const spotsGeoJSON = useMemo(() => spotsToGeoJSON(spots), [spots]);
@@ -531,31 +558,45 @@ export default function CatchMapScreen() {
     return () => { cancelled = true; };
   }, [user, isFocused, reloadToken]);
 
-  // ── Effects: reset selection on filter change ─────────────────────────────
+  // ── Effects: reset selection on filter/mode change ───────────────────────
 
   useEffect(() => {
     setSelectedPin(null);
     setSelectedSpot(null);
   }, [filterMode, selectedFriendId]);
 
-  // ── Effects: fit viewport to pins after map ready ────────────────────────
+  // Clear pin group filter when leaving mine mode (groups are personal)
+  useEffect(() => {
+    if (filterMode !== "mine") setFilterPinGroup(null);
+  }, [filterMode]);
+
+  // Request a camera fit whenever the user switches filter modes
+  useEffect(() => {
+    fitRequestedRef.current = true;
+  }, [filterMode]);
+
+  // ── Effects: fit viewport to pins after map ready / mode change ──────────
+  // fitRequestedRef gates the fit so it only fires on initial load and mode
+  // switches — NOT on species/date/group filter chip changes.
 
   useEffect(() => {
-    if (!isMapReady || renderablePins.length === 0) return;
+    if (!isMapReady || !fitRequestedRef.current || renderablePins.length === 0) return;
+    fitRequestedRef.current = false;
 
     if (viewportTimerRef.current) clearTimeout(viewportTimerRef.current);
 
+    const pins = renderablePins;
     viewportTimerRef.current = setTimeout(() => {
-      if (renderablePins.length === 1) {
+      if (pins.length === 1) {
         cameraRef.current?.setCamera({
-          centerCoordinate: [renderablePins[0].longitude, renderablePins[0].latitude],
+          centerCoordinate: [pins[0].longitude, pins[0].latitude],
           zoomLevel: 13,
           animationDuration: 220,
         });
         return;
       }
 
-      const bounds = boundsFromPins(renderablePins);
+      const bounds = boundsFromPins(pins);
       if (bounds) {
         cameraRef.current?.fitBounds(bounds.ne, bounds.sw, [180, 48, 180, 48], 220);
       }
@@ -568,6 +609,17 @@ export default function CatchMapScreen() {
       }
     };
   }, [isMapReady, renderablePins]);
+
+  // ── Effects: dismiss stale callout when selected pin is filtered out ──────
+
+  useEffect(() => {
+    if (selectedPin !== null && !renderablePins.some((p) => p.id === selectedPin.id)) {
+      setSelectedPin(null);
+    }
+    // selectedPin intentionally omitted: we only want this when renderablePins changes,
+    // not when selectedPin changes (would cause a re-fire loop via setSelectedPin).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renderablePins]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
 
@@ -887,6 +939,11 @@ export default function CatchMapScreen() {
                 size={16}
                 strokeWidth={2.2}
               />
+              {activeFilterCount > 0 && (
+                <View style={styles.filterCountBadge}>
+                  <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+                </View>
+              )}
             </Pressable>
           )}
 
@@ -909,24 +966,16 @@ export default function CatchMapScreen() {
             </Pressable>
           )}
 
-          {/* Spots toggle / add spot */}
+          {/* Add spot button */}
           {!addingSpot && (
             <Pressable
               onPress={() => {
-                if (addingSpot) {
-                  setAddingSpot(false);
-                } else {
-                  setAddingSpot(true);
-                  setShowSpots(true);
-                }
+                setAddingSpot(true);
+                setShowSpots(true);
               }}
-              style={[styles.iconButton, addingSpot && styles.iconButtonActive]}
+              style={styles.iconButton}
             >
-              <BookmarkPlus
-                color={addingSpot ? COLORS.primary : COLORS.text}
-                size={16}
-                strokeWidth={2.2}
-              />
+              <BookmarkPlus color={COLORS.text} size={16} strokeWidth={2.2} />
             </Pressable>
           )}
 
@@ -1006,6 +1055,7 @@ export default function CatchMapScreen() {
               onPress={() => {
                 setFilterSpecies(null);
                 setFilterDateRange(null);
+                setFilterPinGroup(null);
               }}
             >
               <X color="#000" size={14} strokeWidth={2.2} />
@@ -1054,6 +1104,12 @@ export default function CatchMapScreen() {
                   <Text style={styles.calloutMeta}>
                     {[selectedPin.lure, selectedPin.weather].filter(Boolean).join(" · ")}
                   </Text>
+                )}
+                {!!selectedPin.pinGroup && (
+                  <View style={styles.calloutPinGroup}>
+                    <Tag size={10} color={COLORS.primary} strokeWidth={2} />
+                    <Text style={styles.calloutPinGroupText}>{selectedPin.pinGroup}</Text>
+                  </View>
                 )}
                 {selectedPin.syncStatus === "pending" && (
                   <Text style={styles.pendingSyncText}>
@@ -1139,10 +1195,18 @@ export default function CatchMapScreen() {
       {showFilterSheet && (
         <FilterSheet
           availableSpecies={availableSpecies}
+          availablePinGroups={availablePinGroups}
           filterSpecies={filterSpecies}
           filterDateRange={filterDateRange}
+          filterPinGroup={filterPinGroup}
           onSpeciesChange={setFilterSpecies}
           onDateRangeChange={setFilterDateRange}
+          onPinGroupChange={setFilterPinGroup}
+          onClearAll={() => {
+            setFilterSpecies(null);
+            setFilterDateRange(null);
+            setFilterPinGroup(null);
+          }}
           onClose={() => setShowFilterSheet(false)}
           insetBottom={insets.bottom}
         />
@@ -1246,21 +1310,31 @@ function FriendSelector({
 
 function FilterSheet({
   availableSpecies,
+  availablePinGroups,
   filterSpecies,
   filterDateRange,
+  filterPinGroup,
   onSpeciesChange,
   onDateRangeChange,
+  onPinGroupChange,
+  onClearAll,
   onClose,
   insetBottom,
 }: {
   availableSpecies: string[];
+  availablePinGroups: string[];
   filterSpecies: string | null;
   filterDateRange: DateRange;
+  filterPinGroup: string | null;
   onSpeciesChange: (s: string | null) => void;
   onDateRangeChange: (d: DateRange) => void;
+  onPinGroupChange: (g: string | null) => void;
+  onClearAll: () => void;
   onClose: () => void;
   insetBottom: number;
 }) {
+  const hasAnyFilter = !!filterSpecies || !!filterDateRange || !!filterPinGroup;
+
   return (
     <Modal transparent animationType="slide" onRequestClose={onClose}>
       <Pressable style={styles.sheetBackdrop} onPress={onClose} />
@@ -1269,6 +1343,11 @@ function FilterSheet({
 
         <View style={styles.sheetHeader}>
           <Text style={styles.sheetTitle}>Filter Catches</Text>
+          {hasAnyFilter && (
+            <Pressable onPress={onClearAll} style={styles.clearAllButton}>
+              <Text style={styles.clearAllText}>Clear All</Text>
+            </Pressable>
+          )}
           <Pressable onPress={onClose} style={styles.sheetClose}>
             <X color={COLORS.textSecondary} size={18} strokeWidth={2} />
           </Pressable>
@@ -1337,6 +1416,57 @@ function FilterSheet({
             </ScrollView>
           </>
         )}
+
+        {/* Pin Groups — only shown in "mine" mode (availablePinGroups is empty otherwise) */}
+        {availablePinGroups.length > 0 && (
+          <>
+            <Text style={[styles.sheetSectionLabel, { marginTop: 16 }]}>Pin Group</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterChipRow}
+            >
+              <Pressable
+                style={[styles.filterChip, filterPinGroup === null && styles.filterChipActive]}
+                onPress={() => onPinGroupChange(null)}
+              >
+                <Text
+                  style={[styles.filterChipText, filterPinGroup === null && styles.filterChipTextActive]}
+                >
+                  All
+                </Text>
+              </Pressable>
+              {availablePinGroups.map((group) => (
+                <Pressable
+                  key={group}
+                  style={[
+                    styles.filterChip,
+                    filterPinGroup?.toLowerCase() === group.toLowerCase() && styles.filterChipActive,
+                  ]}
+                  onPress={() =>
+                    onPinGroupChange(
+                      filterPinGroup?.toLowerCase() === group.toLowerCase() ? null : group
+                    )
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.filterChipText,
+                      filterPinGroup?.toLowerCase() === group.toLowerCase() &&
+                        styles.filterChipTextActive,
+                    ]}
+                  >
+                    {group}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </>
+        )}
+
+        <Pressable style={[styles.doneButton, { marginTop: 20 }]} onPress={onClose}>
+          <Text style={styles.doneButtonText}>Done</Text>
+        </Pressable>
       </View>
     </Modal>
   );
@@ -1637,6 +1767,35 @@ const styles = StyleSheet.create({
   calloutAnglerName: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
   calloutAnglerSub: { color: COLORS.primary, fontSize: 11, marginTop: 1 },
 
+  calloutPinGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    marginTop: 4,
+    backgroundColor: "rgba(253,123,65,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(253,123,65,0.25)",
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    alignSelf: "flex-start",
+  },
+  calloutPinGroupText: { color: COLORS.primary, fontSize: 10, fontWeight: "600" },
+
+  filterCountBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    minWidth: 16,
+    height: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  filterCountText: { color: "#000", fontSize: 9, fontWeight: "800" },
+
   // Filter sheet
   sheetBackdrop: {
     ...StyleSheet.absoluteFillObject,
@@ -1700,4 +1859,24 @@ const styles = StyleSheet.create({
   },
   filterChipText: { color: COLORS.textSecondary, fontSize: 13, fontWeight: "600" },
   filterChipTextActive: { color: COLORS.primary },
+
+  clearAllButton: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(253,123,65,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(253,123,65,0.3)",
+    marginRight: 6,
+  },
+  clearAllText: { color: COLORS.primary, fontSize: 12, fontWeight: "700" },
+
+  doneButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 30,
+    paddingVertical: 13,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  doneButtonText: { color: "#000", fontWeight: "700", fontSize: 15 },
 });

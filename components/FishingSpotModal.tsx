@@ -10,6 +10,7 @@ import { Trash2, X } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -98,16 +99,29 @@ export default function FishingSpotModal(props: Props) {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!isEdit) return;
-    setDeleting(true);
-    try {
-      await deleteFishingSpot(props.spot.id);
-      (props as EditProps).onDelete(props.spot.id);
-    } catch {
-      setError("Failed to delete spot.");
-      setDeleting(false);
-    }
+    Alert.alert(
+      "Delete Spot",
+      `Delete "${(props as EditProps).spot.name}"? This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await deleteFishingSpot((props as EditProps).spot.id);
+              (props as EditProps).onDelete((props as EditProps).spot.id);
+            } catch {
+              setError("Failed to delete spot. Please try again.");
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
