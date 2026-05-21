@@ -7,6 +7,9 @@ import {
   getCatchLogById,
   updateCatchLog,
   uploadCatchPhoto,
+  getUserLocationHistory,
+  getUserSpeciesHistory,
+  getUserLureHistory,
 } from "@/lib/catches";
 import { getUserPinGroups, upsertPinGroup } from "@/lib/pinGroups";
 import * as Location from "expo-location";
@@ -34,6 +37,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FRESHWATER_SPECIES, getSpeciesMatches } from "@/lib/freshwaterSpecies";
 import { checkText, validateImageAsset } from "@/lib/moderation";
+import { getPrioritizedSuggestions } from "@/lib/suggestions";
+import { WEATHER_OPTIONS } from "@/lib/normalization/weather";
 
 const DEBUG = process.env.EXPO_PUBLIC_DEBUG === "1";
 const LENGTH_UNITS: LengthUnit[] = ["cm", "in"];
@@ -45,20 +50,6 @@ const TEMPERATURE_UNIT_LABELS: Record<TemperatureUnit, string> = {
   f: "Fahrenheit",
 };
 
-const WEATHER_OPTIONS = [
-  "Sunny",
-  "Partly Cloudy",
-  "Cloudy",
-  "Overcast",
-  "Rain",
-  "Light Rain",
-  "Heavy Rain",
-  "Thunderstorms",
-  "Fog",
-  "Windy",
-  "Snow",
-  "Hail",
-];
 
 const LURE_OPTIONS = [
   "Plastic Worm",
@@ -284,6 +275,11 @@ export default function EditCatchScreen() {
   const [pinGroupValue, setPinGroupValue] = useState("");
   const [showPinGroupMatches, setShowPinGroupMatches] = useState(false);
   const [userPinGroups, setUserPinGroups] = useState<string[]>([]);
+  const [locationQuery, setLocationQuery] = useState("");
+  const [showLocationMatches, setShowLocationMatches] = useState(false);
+  const [locationHistory, setLocationHistory] = useState<string[]>([]);
+  const [speciesHistory, setSpeciesHistory] = useState<string[]>([]);
+  const [lureHistory, setLureHistory] = useState<string[]>([]);
   const [timeValue, setTimeValue] = useState(formatCurrentTime());
   const [showPicker, setShowPicker] = useState(false);
   const [pickerCoords, setPickerCoords] = useState<{
@@ -343,6 +339,15 @@ export default function EditCatchScreen() {
       if (!user) return;
       getUserPinGroups(user.id)
         .then(setUserPinGroups)
+        .catch(() => {});
+      getUserLocationHistory(user.id)
+        .then(setLocationHistory)
+        .catch(() => {});
+      getUserSpeciesHistory(user.id)
+        .then(setSpeciesHistory)
+        .catch(() => {});
+      getUserLureHistory(user.id)
+        .then(setLureHistory)
         .catch(() => {});
     });
   }, []);
@@ -635,9 +640,9 @@ export default function EditCatchScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images" as const],
         allowsEditing: true,
-        quality: 0.9,
+        quality: 0.75,
       });
 
       if (result.canceled || !result.assets?.[0]?.uri) return;
@@ -660,10 +665,11 @@ export default function EditCatchScreen() {
     }
   };
 
-  const speciesMatches = getSpeciesMatches(speciesQuery);
+  const speciesMatches = getPrioritizedSuggestions(speciesQuery, speciesHistory, FRESHWATER_SPECIES, 12);
   const weatherMatches = getMatches(weatherQuery, WEATHER_OPTIONS);
-  const lureMatches = getMatches(lureQuery, LURE_OPTIONS);
+  const lureMatches = getPrioritizedSuggestions(lureQuery, lureHistory, LURE_OPTIONS, 8);
   const methodMatches = getMatches(methodQuery, METHOD_OPTIONS);
+  const locationMatches = getMatches(locationQuery, locationHistory);
   const hasExactSpeciesSelection = FRESHWATER_SPECIES.some(
     (species) => species.toLowerCase() === speciesQuery.trim().toLowerCase()
   );
@@ -911,6 +917,48 @@ export default function EditCatchScreen() {
             </Text>
           </Pressable>
 
+          {/* Location text input with history suggestions */}
+          <Text style={styles.sectionLabel}>Or search past locations</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="e.g. Lake Michigan, Rocky River"
+            placeholderTextColor={COLORS.textSecondary}
+            value={locationQuery}
+            onChangeText={(v) => {
+              setLocationQuery(v);
+              setField("location", v.trim());
+              setShowLocationMatches(v.trim().length > 0);
+            }}
+            onFocus={() => {
+              if (locationQuery.trim().length > 0) setShowLocationMatches(true);
+            }}
+            onBlur={() => {
+              setTimeout(() => setShowLocationMatches(false), 120);
+            }}
+          />
+          {showLocationMatches && (
+            <View style={styles.speciesOptions}>
+              {locationMatches.map((location) => (
+                <Pressable
+                  key={location}
+                  onPress={() => {
+                    setField("location", location);
+                    setLocationQuery(location);
+                    setShowLocationMatches(false);
+                  }}
+                  style={styles.speciesOption}
+                >
+                  <Text style={styles.speciesOptionText}>{location}</Text>
+                </Pressable>
+              ))}
+              {locationMatches.length === 0 && locationHistory.length > 0 && (
+                <Text style={styles.speciesHint}>
+                  No matches — your entry will be saved as typed.
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* Date + Time row */}
           <View style={styles.row}>
             <View style={styles.rowItem}>
@@ -1019,6 +1067,11 @@ export default function EditCatchScreen() {
                       <Text style={styles.speciesOptionText}>{weather}</Text>
                     </Pressable>
                   ))}
+                  {weatherMatches.length === 0 && (
+                    <Text style={styles.speciesHint}>
+                      No matches — your entry will be saved as typed.
+                    </Text>
+                  )}
                 </View>
               )}
             </View>
@@ -1059,6 +1112,11 @@ export default function EditCatchScreen() {
                   <Text style={styles.speciesOptionText}>{lure}</Text>
                 </Pressable>
               ))}
+              {lureMatches.length === 0 && (
+                <Text style={styles.speciesHint}>
+                  No matches — your entry will be saved as typed.
+                </Text>
+              )}
             </View>
           )}
 
@@ -1093,6 +1151,11 @@ export default function EditCatchScreen() {
                   <Text style={styles.speciesOptionText}>{method}</Text>
                 </Pressable>
               ))}
+              {methodMatches.length === 0 && (
+                <Text style={styles.speciesHint}>
+                  No matches — your entry will be saved as typed.
+                </Text>
+              )}
             </View>
           )}
 

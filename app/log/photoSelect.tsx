@@ -29,9 +29,9 @@ function navigateToReview(uri: string) {
 async function handleTakePhoto() {
   if (!(await requestPermissions(true))) return;
   const result = await ImagePicker.launchCameraAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: ["images" as const],
     allowsEditing: false,
-    quality: 0.9,
+    quality: 0.75,
   });
   if (result.canceled) return;
   const asset = result.assets[0];
@@ -46,9 +46,9 @@ async function handleTakePhoto() {
 async function handleChooseFromLibrary() {
   if (!(await requestPermissions(false))) return;
   const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    mediaTypes: ["images" as const],
     allowsEditing: false,
-    quality: 0.9,
+    quality: 0.75,
   });
   if (result.canceled) return;
   const asset = result.assets[0];

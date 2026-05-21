@@ -2,6 +2,8 @@ import { useAuth } from "@/auth/AuthProvider";
 import { useFriends } from "@/auth/FriendsProvider";
 import { useSubscription } from "@/auth/SubscriptionProvider";
 import { ProBadge } from "@/components/ProBadge";
+import { HintBubble } from "@/components/HintBubble";
+import { HINT_KEYS } from "@/lib/onboarding";
 import { COLORS } from "@/lib/colors";
 import MapZoomControls from "@/components/MapZoomControls";
 import FishingSpotModal from "@/components/FishingSpotModal";
@@ -1287,6 +1289,25 @@ export default function CatchMapScreen() {
           onClose={() => setEditingSpot(null)}
         />
       )}
+
+      {/* First-use feature discovery hints (stacked, each dismisses independently) */}
+      {!addingSpot && !selectedPin && !selectedSpot && (
+        <>
+          <HintBubble
+            hintKey={HINT_KEYS.MAP_LAYERS}
+            title="Switch Map Layers"
+            body="Tap the layers icon in the top-right to toggle satellite view and your spots."
+            style={[styles.hintBubble, { bottom: insets.bottom + 16 }]}
+          />
+          <HintBubble
+            hintKey={HINT_KEYS.MAP_SPOTS}
+            title="Save Secret Spots"
+            body="Tap the bookmark icon to drop a private fishing spot pin anywhere on the map."
+            accentColor="#4ade80"
+            style={[styles.hintBubble, { bottom: insets.bottom + 112 }]}
+          />
+        </>
+      )}
     </View>
   );
 }
@@ -1838,6 +1859,11 @@ const toggleStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   map: { flex: 1 },
+  hintBubble: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+  },
 
   header: {
     position: "absolute",

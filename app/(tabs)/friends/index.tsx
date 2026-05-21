@@ -17,6 +17,7 @@ import {
   Check,
   ChevronRight,
   Search,
+  Users,
   X,
 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
@@ -403,8 +404,9 @@ export default function FriendsScreen() {
             </View>
           ) : friends.length === 0 ? (
             <EmptyState
-              title="No friends yet"
-              text="Search for anglers above to add your first friend."
+              showIcon
+              title="Find your fishing crew"
+              text="Search for anglers above and add your first friend to see their public catches."
             />
           ) : (
             <View style={styles.list}>
@@ -450,9 +452,22 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle: string })
   );
 }
 
-function EmptyState({ title, text }: { title: string; text: string }) {
+function EmptyState({
+  title,
+  text,
+  showIcon = false,
+}: {
+  title: string;
+  text: string;
+  showIcon?: boolean;
+}) {
   return (
     <View style={styles.centerCard}>
+      {showIcon && (
+        <View style={styles.emptyIconWrap}>
+          <Users size={36} color={COLORS.textSecondary} strokeWidth={1.5} />
+        </View>
+      )}
       <Text style={styles.emptyTitle}>{title}</Text>
       <Text style={styles.emptyText}>{text}</Text>
     </View>
@@ -708,6 +723,17 @@ const styles = StyleSheet.create({
     padding: 22,
     alignItems: "center",
     gap: 8,
+  },
+  emptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginBottom: 4,
   },
   emptyTitle: {
     color: COLORS.text,

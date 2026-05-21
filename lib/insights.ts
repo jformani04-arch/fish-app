@@ -29,6 +29,7 @@ export function generateInsights(data: AnalyticsData): Insight[] {
     monthlyActivity,
     biggestByLength,
     biggestByWeight,
+    locationPerformance,
   } = data;
 
   if (stats.totalCatches < 3) return [];
@@ -178,6 +179,40 @@ export function generateInsights(data: AnalyticsData): Insight[] {
         category: "technique",
         value: best.condition,
         priority: 6,
+      });
+    }
+  }
+
+  // --- Big fish territory ---
+  // Find the spot with the best average fish size (minimum 3 catches with size data).
+  const bestSizeSpot = locationPerformance
+    .filter((loc) => loc.avgLength !== null && loc.catchCount >= 3)
+    .sort((a, b) => (b.avgLength ?? 0) - (a.avgLength ?? 0))[0];
+  if (bestSizeSpot?.avgLength) {
+    insights.push({
+      id: "best-size-location",
+      title: "Big fish territory",
+      description: `Avg ${bestSizeSpot.avgLength.toFixed(0)} cm per catch`,
+      category: "location",
+      value: bestSizeSpot.location,
+      priority: 7,
+    });
+  }
+
+  // --- Gaining momentum (3-month rolling comparison) ---
+  // Shows when the last 3 months outpace the prior 3 months by a meaningful margin.
+  if (monthlyActivity.length >= 6) {
+    const last3 = monthlyActivity.slice(-3).reduce((s, m) => s + m.count, 0);
+    const prev3 = monthlyActivity.slice(-6, -3).reduce((s, m) => s + m.count, 0);
+    const gain = last3 - prev3;
+    if (gain >= 3 && prev3 > 0) {
+      insights.push({
+        id: "trend-quarter-up",
+        title: "Gaining momentum",
+        description: `${gain} more catch${gain !== 1 ? "es" : ""} vs. the prior 3 months`,
+        category: "trend",
+        value: `+${gain}`,
+        priority: 8,
       });
     }
   }

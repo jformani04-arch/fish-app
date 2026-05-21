@@ -507,28 +507,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 14,
   },
-  avatar: {
-    width: 72,
-    height: 72,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-  },
-  avatarFallback: {
-    width: 72,
-    height: 72,
-    borderRadius: 999,
-    backgroundColor: "rgba(253,123,65,0.15)",
-    borderWidth: 2,
-    borderColor: COLORS.primary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarFallbackText: {
-    color: COLORS.primary,
-    fontSize: 28,
-    fontWeight: "700",
-  },
   username: {
     color: COLORS.text,
     fontSize: 20,
@@ -671,11 +649,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  fallbackIcon: {
-    width: 34,
-    height: 34,
-    resizeMode: "contain",
-  },
   catchContent: {
     flex: 1,
     minWidth: 0,
@@ -690,16 +663,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     marginTop: 4,
-  },
-  metaIcon: {
-    width: 22,
-    height: 22,
-    resizeMode: "contain",
-  },
-  metaIconLg: {
-    width: 26,
-    height: 26,
-    resizeMode: "contain",
   },
   metaText: {
     color: COLORS.textSecondary,

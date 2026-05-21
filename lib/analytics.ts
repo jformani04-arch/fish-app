@@ -1,4 +1,8 @@
 import { CatchLog } from "@/lib/catches";
+import { normalizeWeatherCondition } from "@/lib/normalization/weather";
+import { normalizeLocationName } from "@/lib/normalization/location";
+import { normalizeSpeciesName } from "@/lib/normalization/species";
+import { normalizeLureName } from "@/lib/normalization/lure";
 
 export interface PersonalStats {
   totalCatches: number;
@@ -177,15 +181,15 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
     ? Math.floor((now.getTime() - new Date(lastCatchDate).getTime()) / 86400000)
     : null;
 
-  const speciesCounts = countBy(synced, (c) => c.species);
-  const lureCounts = countBy(synced, (c) => c.lure);
-  const locationCounts = countBy(synced, (c) => c.location);
+  const speciesCounts = countBy(synced, (c) => normalizeSpeciesName(c.species));
+  const lureCounts = countBy(synced, (c) => normalizeLureName(c.lure));
+  const locationCounts = countBy(synced, (c) => normalizeLocationName(c.location));
 
   const uniqueSpecies = new Set(
-    synced.map((c) => c.species.trim().toLowerCase()).filter(Boolean)
+    synced.map((c) => normalizeSpeciesName(c.species).toLowerCase()).filter(Boolean)
   ).size;
   const uniqueLocations = new Set(
-    synced.map((c) => c.location.trim().toLowerCase()).filter(Boolean)
+    synced.map((c) => normalizeLocationName(c.location).toLowerCase()).filter(Boolean)
   ).size;
 
   const stats: PersonalStats = {
@@ -242,7 +246,9 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
   }));
 
   // ----- Weather Breakdown -----
-  const weatherBreakdown: WeatherCount[] = countBy(synced, (c) => c.weather)
+  const weatherBreakdown: WeatherCount[] = countBy(synced, (c) =>
+    normalizeWeatherCondition(c.weather)
+  )
     .slice(0, 6)
     .map(({ key, count }) => ({ condition: key, count }));
 
@@ -291,7 +297,7 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
   // ----- Location Performance -----
   const locationMap = new Map<string, { catches: CatchLog[] }>();
   for (const c of synced) {
-    const loc = c.location.trim();
+    const loc = normalizeLocationName(c.location);
     if (!loc) continue;
     if (!locationMap.has(loc)) locationMap.set(loc, { catches: [] });
     locationMap.get(loc)!.catches.push(c);
@@ -303,7 +309,7 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
       const weights = lCatches.map((c) => parseNumericValue(c.weight)).filter((v) => v > 0);
       const speciesCnt = new Map<string, number>();
       for (const c of lCatches) {
-        const sp = c.species.trim();
+        const sp = normalizeSpeciesName(c.species);
         if (sp) speciesCnt.set(sp, (speciesCnt.get(sp) ?? 0) + 1);
       }
       const topSpecies = [...speciesCnt.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
@@ -325,7 +331,7 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
       const lCatches = locationMap.get(location)?.catches ?? [];
       const spMap = new Map<string, number>();
       for (const c of lCatches) {
-        const sp = c.species.trim();
+        const sp = normalizeSpeciesName(c.species);
         if (sp) spMap.set(sp, (spMap.get(sp) ?? 0) + 1);
       }
       const species: SpeciesAtLocation[] = [...spMap.entries()]
@@ -339,8 +345,8 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
   // ----- Lure Effectiveness by Species (top 6 lures) -----
   const lureMap = new Map<string, Map<string, number>>();
   for (const c of synced) {
-    const lure = c.lure.trim();
-    const species = c.species.trim();
+    const lure = normalizeLureName(c.lure);
+    const species = normalizeSpeciesName(c.species);
     if (!lure || !species) continue;
     if (!lureMap.has(lure)) lureMap.set(lure, new Map());
     const spMap = lureMap.get(lure)!;
@@ -363,7 +369,7 @@ export function computeAnalytics(catches: CatchLog[]): AnalyticsData {
   const topSpeciesNames = speciesCounts.slice(0, 3).map((x) => x.key);
   const topSpeciesByTimeOfDay: TimeOfDayBySpecies[] = topSpeciesNames
     .map((species) => {
-      const spCatches = synced.filter((c) => c.species.trim() === species && c.date);
+      const spCatches = synced.filter((c) => normalizeSpeciesName(c.species) === species && c.date);
       const periodCnt = new Map<string, number>();
       for (const c of spCatches) {
         const p = getTimeOfDayPeriod(c.date);
@@ -437,7 +443,8 @@ export function filterCatches(catches: CatchLog[], filter: AnalyticsFilter): Cat
   let result = catches;
   if (filter.species) result = result.filter((c) => c.species === filter.species);
   if (filter.lure) result = result.filter((c) => c.lure === filter.lure);
-  if (filter.weather) result = result.filter((c) => c.weather === filter.weather);
+  if (filter.weather)
+    result = result.filter((c) => normalizeWeatherCondition(c.weather) === filter.weather);
   if (filter.season) result = result.filter((c) => c.date && getSeason(c.date) === filter.season);
   if (filter.dateRange) {
     const cutoff = getDateRangeCutoffForFilter(filter.dateRange);

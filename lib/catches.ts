@@ -8,6 +8,10 @@ import {
 } from "@/lib/mapCoordinates";
 import { isLikelyNetworkError, refreshNetworkStatus } from "@/lib/network";
 import { fileUriToUploadBody, isLocalFileUri } from "@/lib/upload";
+import { normalizeSpeciesName } from "@/lib/normalization/species";
+import { normalizeLureName } from "@/lib/normalization/lure";
+import { normalizeLocationName } from "@/lib/normalization/location";
+import { normalizeWeatherCondition } from "@/lib/normalization/weather";
 
 const DEBUG = process.env.EXPO_PUBLIC_DEBUG === "1";
 
@@ -224,11 +228,65 @@ export async function getUserFavoriteCatchLogs(userId: string): Promise<CatchLog
   return all.filter((row) => row.isFavorite);
 }
 
+/**
+ * Get distinct locations from user's catches, ordered by frequency.
+ * Groups by normalized form so "Lake michigan" and "Lake Michigan" are the same entry.
+ */
+export async function getUserLocationHistory(userId: string): Promise<string[]> {
+  const catches = await getUserCatchLogs(userId);
+  const locationMap = new Map<string, number>();
+
+  for (const c of catches) {
+    const loc = normalizeLocationName(c.location);
+    if (loc) locationMap.set(loc, (locationMap.get(loc) ?? 0) + 1);
+  }
+
+  return [...locationMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([location]) => location);
+}
+
+/**
+ * Get distinct species from user's catches, ordered by frequency.
+ * Groups by normalized form so "largemouth bass" and "Largemouth Bass" are the same entry.
+ */
+export async function getUserSpeciesHistory(userId: string): Promise<string[]> {
+  const catches = await getUserCatchLogs(userId);
+  const speciesMap = new Map<string, number>();
+
+  for (const c of catches) {
+    const sp = normalizeSpeciesName(c.species);
+    if (sp) speciesMap.set(sp, (speciesMap.get(sp) ?? 0) + 1);
+  }
+
+  return [...speciesMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([species]) => species);
+}
+
+/**
+ * Get distinct lures from user's catches, ordered by frequency.
+ * Groups by normalized form so "plastic worm" and "Plastic Worm" are the same entry.
+ */
+export async function getUserLureHistory(userId: string): Promise<string[]> {
+  const catches = await getUserCatchLogs(userId);
+  const lureMap = new Map<string, number>();
+
+  for (const c of catches) {
+    const lure = normalizeLureName(c.lure);
+    if (lure) lureMap.set(lure, (lureMap.get(lure) ?? 0) + 1);
+  }
+
+  return [...lureMap.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([lure]) => lure);
+}
+
 export function getCatchStats(catches: CatchLog[]) {
   const speciesSet = new Set(
     catches
-      .map((item) => item.species.trim().toLowerCase())
-      .filter((item) => item.length > 0)
+      .map((item) => normalizeSpeciesName(item.species).toLowerCase())
+      .filter(Boolean)
   );
 
   return {
@@ -275,20 +333,22 @@ export async function updateCatchLog(catchLog: CatchLog): Promise<void> {
   debugLog("update catch user_id", user.id);
 
   const pending = await getPendingCatchById(user.id, catchLog.id);
+  const normalized = normalizeCatchInput(catchLog);
+
   if (pending) {
     await upsertPendingCatchRecord(user.id, {
       queuedAt: pending.queuedAt,
       lastError: pending.lastError,
       catchLog: {
-        ...catchLog,
-        imageUrl: catchLog.imageUrl || pending.catchLog.imageUrl,
+        ...normalized,
+        imageUrl: normalized.imageUrl || pending.catchLog.imageUrl,
         syncStatus: "pending",
       },
     });
     return;
   }
 
-  const payload = mapCatchLogToUpdateRow(catchLog);
+  const payload = mapCatchLogToUpdateRow(normalized);
 
   let error = await runCatchMutationWithCoordinateFallback(
     (variant) =>
@@ -312,6 +372,23 @@ export async function updateCatchLog(catchLog: CatchLog): Promise<void> {
   debugLog("update success catch_id", catchLog.id);
 }
 
+/**
+ * Normalize the analytics-critical fields of a catch before storage.
+ * Applied consistently at every write path (create, update, pending sync)
+ * so that analytics grouping is reliable even for older un-normalized rows.
+ */
+function normalizeCatchInput<T extends { species: string; lure: string; location: string; weather: string }>(
+  input: T
+): T {
+  return {
+    ...input,
+    species: normalizeSpeciesName(input.species),
+    lure: normalizeLureName(input.lure),
+    location: normalizeLocationName(input.location),
+    weather: normalizeWeatherCondition(input.weather),
+  };
+}
+
 export async function createCatchLog(input: CatchLogInsertInput): Promise<CreateCatchLogResult> {
   const {
     data: { user },
@@ -324,11 +401,11 @@ export async function createCatchLog(input: CatchLogInsertInput): Promise<Create
   debugLog("create catch user_id", user.id);
 
   const catchId = generateUUID();
-  const catchLog: CatchLog = {
+  const catchLog: CatchLog = normalizeCatchInput({
     ...input,
     id: catchId,
     syncStatus: "pending",
-  };
+  });
 
   const isOnline = await refreshNetworkStatus();
   if (!isOnline) {
@@ -641,7 +718,7 @@ export async function syncPendingCatchLogs(): Promise<number> {
 
   for (const record of pending) {
     try {
-      const catchLog = await preparePendingCatchForSync(record.catchLog);
+      const catchLog = normalizeCatchInput(await preparePendingCatchForSync(record.catchLog));
       await insertCatchRow({
         id: catchLog.id,
         user_id: user.id,

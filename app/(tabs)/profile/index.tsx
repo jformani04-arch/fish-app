@@ -293,9 +293,9 @@ export default function ProfileScreen() {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images" as const],
         allowsEditing: true,
-        quality: 0.9,
+        quality: 0.8,
       });
       if (result.canceled) return;
 

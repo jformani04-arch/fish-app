@@ -308,11 +308,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "transparent",
   },
-  emptyIconImage: {
-    width: 84,
-    height: 84,
-    resizeMode: "contain",
-  },
   emptyTitle: {
     color: COLORS.text,
     fontSize: 18,
@@ -341,11 +336,6 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.35)",
     alignItems: "center",
     justifyContent: "center",
-  },
-  fallbackImageIcon: {
-    width: 36,
-    height: 36,
-    resizeMode: "contain",
   },
   imageOverlay: {
     ...StyleSheet.absoluteFillObject,

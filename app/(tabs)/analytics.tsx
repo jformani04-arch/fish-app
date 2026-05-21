@@ -492,6 +492,7 @@ export default function Analytics() {
 
   const [allCatches, setAllCatches] = useState<CatchLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [filter, setFilter] = useState<AnalyticsFilter>(EMPTY_FILTER);
   const [showFilterSheet, setShowFilterSheet] = useState(false);
@@ -505,12 +506,16 @@ export default function Analytics() {
   useEffect(() => {
     if (!isFocused) return;
     setLoading(true);
-    load().catch(() => {}).finally(() => setLoading(false));
+    setLoadError(false);
+    load()
+      .catch(() => setLoadError(true))
+      .finally(() => setLoading(false));
   }, [isFocused, load]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load().catch(() => {});
+    setLoadError(false);
+    await load().catch(() => setLoadError(true));
     setRefreshing(false);
   }, [load]);
 
@@ -541,6 +546,28 @@ export default function Analytics() {
       <View style={sc.loadingContainer}>
         <ActivityIndicator size="large" color={COLORS.primary} />
         <Text style={sc.loadingText}>Crunching your data...</Text>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={sc.loadingContainer}>
+        <BarChart2 size={40} color={COLORS.textSecondary} strokeWidth={1.5} />
+        <Text style={sc.emptyStateTitle}>Couldn't load your data</Text>
+        <Text style={sc.emptyStateText}>Check your connection and try again.</Text>
+        <Pressable
+          style={sc.emptyStateBtn}
+          onPress={() => {
+            setLoading(true);
+            setLoadError(false);
+            load()
+              .catch(() => setLoadError(true))
+              .finally(() => setLoading(false));
+          }}
+        >
+          <Text style={sc.emptyStateBtnText}>Try Again</Text>
+        </Pressable>
       </View>
     );
   }
@@ -619,12 +646,12 @@ export default function Analytics() {
             <View style={sc.emptyIconWrap}>
               <BarChart2 size={40} color={COLORS.textSecondary} strokeWidth={1.5} />
             </View>
-            <Text style={sc.emptyStateTitle}>No data yet</Text>
+            <Text style={sc.emptyStateTitle}>Your insights are waiting</Text>
             <Text style={sc.emptyStateText}>
-              Log some catches to unlock your personal fishing insights.
+              Log your first catch and FishForge will start surfacing patterns — best times, top lures, and your most productive spots.
             </Text>
-            <Pressable style={sc.emptyStateBtn} onPress={() => router.back()}>
-              <Text style={sc.emptyStateBtnText}>Back to Home</Text>
+            <Pressable style={sc.emptyStateBtn} onPress={() => router.push("/log" as never)}>
+              <Text style={sc.emptyStateBtnText}>Log First Catch</Text>
             </Pressable>
           </View>
         ) : (

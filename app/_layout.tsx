@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from "@/auth/AuthProvider";
 import { FriendsProvider } from "@/auth/FriendsProvider";
 import { SubscriptionProvider } from "@/auth/SubscriptionProvider";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { startNetworkMonitor, subscribeToNetworkStatus } from "@/lib/network";
 import { syncPendingCatchLogs } from "@/lib/catches";
 import { supabase } from "@/lib/supabase";
@@ -127,5 +128,5 @@ function CatchSyncBootstrap() {
     };
   }, [user]);
 
-  return null;
+  return user ? <OfflineBanner /> : null;
 }

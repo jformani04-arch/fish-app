@@ -33,6 +33,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Pressable,
   ScrollView,
@@ -443,11 +444,298 @@ export default function CatchesScreen() {
     }
   };
 
+  // ── Render helpers ─────────────────────────────────────────────────────────
+
+  const renderItem = useCallback(
+    ({ item }: { item: CatchLog }) => (
+      <CatchCard
+        catchLog={item}
+        isSelected={selectedIds.has(item.id)}
+        selectionMode={selectionMode}
+        onPress={handleCardPress}
+        onLongPress={handleCardLongPress}
+      />
+    ),
+    [selectedIds, selectionMode, handleCardPress, handleCardLongPress]
+  );
+
+  const listHeader = (
+    <>
+      {/* Header */}
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => router.replace("/(tabs)/home")}
+          style={styles.backButton}
+        >
+          <ArrowLeft color={COLORS.text} size={20} strokeWidth={2.5} />
+        </Pressable>
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.title}>Your Catches</Text>
+          <Text style={styles.subtitle}>
+            {catches.length} {catches.length === 1 ? "catch" : "catches"} logged
+          </Text>
+        </View>
+      </View>
+
+      {/* Actions row */}
+      <View style={styles.actionsRow}>
+        <Pressable style={styles.secondaryAction} onPress={() => fetchCatches(true)}>
+          <RefreshCcw color={COLORS.primary} size={16} strokeWidth={2.2} />
+          <Text style={styles.secondaryActionText}>
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.secondaryAction,
+            selectionMode && styles.secondaryActionActive,
+          ]}
+          onPress={() =>
+            selectionMode ? exitSelectionMode() : enterSelectionMode()
+          }
+        >
+          {selectionMode ? (
+            <X color={COLORS.primary} size={16} strokeWidth={2.5} />
+          ) : (
+            <CheckSquare color={COLORS.textSecondary} size={16} strokeWidth={2.2} />
+          )}
+          <Text
+            style={[
+              styles.secondaryActionText,
+              selectionMode && styles.secondaryActionActiveText,
+            ]}
+          >
+            {selectionMode ? "Cancel" : "Select"}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[
+            styles.secondaryAction,
+            (sortConfig || showSortPanel) && styles.secondaryActionActive,
+          ]}
+          onPress={() => setShowSortPanel((v) => !v)}
+        >
+          <ArrowUpDown
+            color={sortConfig || showSortPanel ? COLORS.primary : COLORS.textSecondary}
+            size={16}
+            strokeWidth={2.2}
+          />
+          <Text
+            style={[
+              styles.secondaryActionText,
+              (sortConfig || showSortPanel) && styles.secondaryActionActiveText,
+            ]}
+          >
+            {sortConfig
+              ? `${SORT_DEFINITIONS.find((d) => d.field === sortConfig.field)?.label} ${sortConfig.direction === "asc" ? "↑" : "↓"}`
+              : "Sort"}
+          </Text>
+        </Pressable>
+
+        {__DEV__ && (
+          <Pressable style={styles.devAction} onPress={handleSeedDevCatch}>
+            <Text style={styles.devActionText}>+ Add Test Catch</Text>
+          </Pressable>
+        )}
+      </View>
+
+      {/* Sort panel */}
+      {showSortPanel && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.sortPanelContent}
+          style={styles.sortPanel}
+        >
+          {SORT_DEFINITIONS.map((def) => {
+            const isActive = sortConfig?.field === def.field;
+            return (
+              <Pressable
+                key={def.field}
+                style={[styles.sortPill, isActive && styles.sortPillActive]}
+                onPress={() => {
+                  if (isActive) {
+                    setSortConfig((prev) =>
+                      prev
+                        ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" }
+                        : null
+                    );
+                  } else {
+                    setSortConfig({ field: def.field, direction: def.defaultDirection });
+                    setShowSortPanel(false);
+                  }
+                }}
+              >
+                <Text style={[styles.sortPillText, isActive && styles.sortPillTextActive]}>
+                  {def.label}
+                  {isActive ? (sortConfig!.direction === "asc" ? " ↑" : " ↓") : ""}
+                </Text>
+              </Pressable>
+            );
+          })}
+          {sortConfig && (
+            <Pressable
+              style={styles.sortClear}
+              onPress={() => {
+                setSortConfig(null);
+                setShowSortPanel(false);
+              }}
+            >
+              <X color={COLORS.textSecondary} size={14} strokeWidth={2.5} />
+            </Pressable>
+          )}
+        </ScrollView>
+      )}
+
+      {/* Group filter pills */}
+      {groups.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.groupFilterRow}
+          style={styles.groupFilterScroll}
+        >
+          <Pressable
+            style={[
+              styles.groupPill,
+              !activeGroupFilter && styles.groupPillActive,
+            ]}
+            onPress={() => setActiveGroupFilter(null)}
+          >
+            <Text
+              style={[
+                styles.groupPillText,
+                !activeGroupFilter && styles.groupPillTextActive,
+              ]}
+            >
+              All
+            </Text>
+          </Pressable>
+          {groups.map((group) => (
+            <Pressable
+              key={group}
+              style={[
+                styles.groupPill,
+                activeGroupFilter?.toLowerCase() === group.toLowerCase() &&
+                  styles.groupPillActive,
+              ]}
+              onPress={() =>
+                setActiveGroupFilter((prev) =>
+                  prev?.toLowerCase() === group.toLowerCase() ? null : group
+                )
+              }
+            >
+              <Tag
+                size={10}
+                strokeWidth={2}
+                color={
+                  activeGroupFilter?.toLowerCase() === group.toLowerCase()
+                    ? COLORS.primary
+                    : COLORS.textSecondary
+                }
+              />
+              <Text
+                style={[
+                  styles.groupPillText,
+                  activeGroupFilter?.toLowerCase() === group.toLowerCase() &&
+                    styles.groupPillTextActive,
+                ]}
+              >
+                {group}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Active filter banner */}
+      {!!activeGroupFilter && (
+        <Pressable
+          style={styles.filterActiveBanner}
+          onPress={() => setActiveGroupFilter(null)}
+        >
+          <Tag size={11} color={COLORS.primary} strokeWidth={2} />
+          <Text style={styles.filterActiveBannerText}>
+            Filtered:{" "}
+            <Text style={styles.filterActiveGroupName}>{activeGroupFilter}</Text>
+          </Text>
+          <X size={12} color={COLORS.primary} strokeWidth={2.5} />
+        </Pressable>
+      )}
+
+      {!!actionError && !loading && !error && (
+        <View style={styles.actionErrorBanner}>
+          <Text style={styles.actionErrorText}>{actionError}</Text>
+        </View>
+      )}
+
+      {/* Selection controls */}
+      {selectionMode && !loading && filteredCatches.length > 0 && (
+        <View style={styles.selectionControlsRow}>
+          <Pressable onPress={handleSelectAll} style={styles.selectAllButton}>
+            {allSelected ? (
+              <Check color={COLORS.primary} size={14} strokeWidth={2.5} />
+            ) : (
+              <Square color={COLORS.textSecondary} size={14} strokeWidth={2} />
+            )}
+            <Text style={styles.selectAllText}>
+              {allSelected ? "Deselect All" : "Select All"}
+            </Text>
+          </Pressable>
+          <Text style={styles.selectionCountText}>
+            {selectedIds.size} of {filteredCatches.length} selected
+          </Text>
+        </View>
+      )}
+    </>
+  );
+
+  const listEmpty = loading ? (
+    <View style={styles.centerCard}>
+      <ActivityIndicator size="large" color={COLORS.primary} />
+      <Text style={styles.centerText}>Loading catches...</Text>
+    </View>
+  ) : error ? (
+    <View style={styles.centerCard}>
+      <Text style={styles.errorTitle}>Could not load catches</Text>
+      <Text style={styles.centerSubtext}>{error}</Text>
+      <Pressable style={styles.retryButton} onPress={() => fetchCatches()}>
+        <Text style={styles.retryText}>Try Again</Text>
+      </Pressable>
+    </View>
+  ) : (
+    <View style={styles.centerCard}>
+      <View style={styles.emptyIconWrap}>
+        <Fish color={COLORS.textSecondary} size={48} strokeWidth={1.5} />
+      </View>
+      <Text style={styles.emptyTitle}>
+        {activeGroupFilter
+          ? `No catches in "${activeGroupFilter}"`
+          : "No catches yet"}
+      </Text>
+      <Text style={styles.centerSubtext}>
+        {activeGroupFilter
+          ? "Try a different group or tap the banner above to clear the filter."
+          : "Log your first catch to start building your fishing history."}
+      </Text>
+      {!activeGroupFilter && (
+        <Pressable
+          style={({ pressed }) => [styles.emptyCtaBtn, pressed && { opacity: 0.75 }]}
+          onPress={() => router.push("/log" as never)}
+        >
+          <Text style={styles.emptyCtaBtnText}>Log First Catch</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <View style={styles.screenWrap}>
-      <ScrollView
+      <FlatList
         style={styles.container}
         contentContainerStyle={[
           styles.contentContainer,
@@ -455,281 +743,17 @@ export default function CatchesScreen() {
           selectionMode && styles.contentContainerWithBar,
         ]}
         showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <Pressable
-            onPress={() => router.replace("/(tabs)/home")}
-            style={styles.backButton}
-          >
-            <ArrowLeft color={COLORS.text} size={20} strokeWidth={2.5} />
-          </Pressable>
-          <View style={styles.headerTextWrap}>
-            <Text style={styles.title}>Your Catches</Text>
-            <Text style={styles.subtitle}>
-              {catches.length} {catches.length === 1 ? "catch" : "catches"} logged
-            </Text>
-          </View>
-        </View>
-
-        {/* Actions row */}
-        <View style={styles.actionsRow}>
-          <Pressable style={styles.secondaryAction} onPress={() => fetchCatches(true)}>
-            <RefreshCcw color={COLORS.primary} size={16} strokeWidth={2.2} />
-            <Text style={styles.secondaryActionText}>
-              {refreshing ? "Refreshing..." : "Refresh"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.secondaryAction,
-              selectionMode && styles.secondaryActionActive,
-            ]}
-            onPress={() =>
-              selectionMode ? exitSelectionMode() : enterSelectionMode()
-            }
-          >
-            {selectionMode ? (
-              <X color={COLORS.primary} size={16} strokeWidth={2.5} />
-            ) : (
-              <CheckSquare color={COLORS.textSecondary} size={16} strokeWidth={2.2} />
-            )}
-            <Text
-              style={[
-                styles.secondaryActionText,
-                selectionMode && styles.secondaryActionActiveText,
-              ]}
-            >
-              {selectionMode ? "Cancel" : "Select"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.secondaryAction,
-              (sortConfig || showSortPanel) && styles.secondaryActionActive,
-            ]}
-            onPress={() => setShowSortPanel((v) => !v)}
-          >
-            <ArrowUpDown
-              color={sortConfig || showSortPanel ? COLORS.primary : COLORS.textSecondary}
-              size={16}
-              strokeWidth={2.2}
-            />
-            <Text
-              style={[
-                styles.secondaryActionText,
-                (sortConfig || showSortPanel) && styles.secondaryActionActiveText,
-              ]}
-            >
-              {sortConfig
-                ? `${SORT_DEFINITIONS.find((d) => d.field === sortConfig.field)?.label} ${sortConfig.direction === "asc" ? "↑" : "↓"}`
-                : "Sort"}
-            </Text>
-          </Pressable>
-
-          {__DEV__ && (
-            <Pressable style={styles.devAction} onPress={handleSeedDevCatch}>
-              <Text style={styles.devActionText}>+ Add Test Catch</Text>
-            </Pressable>
-          )}
-        </View>
-
-        {/* Sort panel */}
-        {showSortPanel && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.sortPanelContent}
-            style={styles.sortPanel}
-          >
-            {SORT_DEFINITIONS.map((def) => {
-              const isActive = sortConfig?.field === def.field;
-              return (
-                <Pressable
-                  key={def.field}
-                  style={[styles.sortPill, isActive && styles.sortPillActive]}
-                  onPress={() => {
-                    if (isActive) {
-                      setSortConfig((prev) =>
-                        prev
-                          ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" }
-                          : null
-                      );
-                    } else {
-                      setSortConfig({ field: def.field, direction: def.defaultDirection });
-                      setShowSortPanel(false);
-                    }
-                  }}
-                >
-                  <Text style={[styles.sortPillText, isActive && styles.sortPillTextActive]}>
-                    {def.label}
-                    {isActive ? (sortConfig!.direction === "asc" ? " ↑" : " ↓") : ""}
-                  </Text>
-                </Pressable>
-              );
-            })}
-            {sortConfig && (
-              <Pressable
-                style={styles.sortClear}
-                onPress={() => {
-                  setSortConfig(null);
-                  setShowSortPanel(false);
-                }}
-              >
-                <X color={COLORS.textSecondary} size={14} strokeWidth={2.5} />
-              </Pressable>
-            )}
-          </ScrollView>
-        )}
-
-        {/* Group filter pills */}
-        {groups.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.groupFilterRow}
-            style={styles.groupFilterScroll}
-          >
-            <Pressable
-              style={[
-                styles.groupPill,
-                !activeGroupFilter && styles.groupPillActive,
-              ]}
-              onPress={() => setActiveGroupFilter(null)}
-            >
-              <Text
-                style={[
-                  styles.groupPillText,
-                  !activeGroupFilter && styles.groupPillTextActive,
-                ]}
-              >
-                All
-              </Text>
-            </Pressable>
-            {groups.map((group) => (
-              <Pressable
-                key={group}
-                style={[
-                  styles.groupPill,
-                  activeGroupFilter?.toLowerCase() === group.toLowerCase() &&
-                    styles.groupPillActive,
-                ]}
-                onPress={() =>
-                  setActiveGroupFilter((prev) =>
-                    prev?.toLowerCase() === group.toLowerCase() ? null : group
-                  )
-                }
-              >
-                <Tag
-                  size={10}
-                  strokeWidth={2}
-                  color={
-                    activeGroupFilter?.toLowerCase() === group.toLowerCase()
-                      ? COLORS.primary
-                      : COLORS.textSecondary
-                  }
-                />
-                <Text
-                  style={[
-                    styles.groupPillText,
-                    activeGroupFilter?.toLowerCase() === group.toLowerCase() &&
-                      styles.groupPillTextActive,
-                  ]}
-                >
-                  {group}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-
-        {/* Active filter banner */}
-        {!!activeGroupFilter && (
-          <Pressable
-            style={styles.filterActiveBanner}
-            onPress={() => setActiveGroupFilter(null)}
-          >
-            <Tag size={11} color={COLORS.primary} strokeWidth={2} />
-            <Text style={styles.filterActiveBannerText}>
-              Filtered:{" "}
-              <Text style={styles.filterActiveGroupName}>{activeGroupFilter}</Text>
-            </Text>
-            <X size={12} color={COLORS.primary} strokeWidth={2.5} />
-          </Pressable>
-        )}
-
-        {!!actionError && !loading && !error && (
-          <View style={styles.actionErrorBanner}>
-            <Text style={styles.actionErrorText}>{actionError}</Text>
-          </View>
-        )}
-
-        {/* Selection controls */}
-        {selectionMode && !loading && filteredCatches.length > 0 && (
-          <View style={styles.selectionControlsRow}>
-            <Pressable onPress={handleSelectAll} style={styles.selectAllButton}>
-              {allSelected ? (
-                <Check color={COLORS.primary} size={14} strokeWidth={2.5} />
-              ) : (
-                <Square color={COLORS.textSecondary} size={14} strokeWidth={2} />
-              )}
-              <Text style={styles.selectAllText}>
-                {allSelected ? "Deselect All" : "Select All"}
-              </Text>
-            </Pressable>
-            <Text style={styles.selectionCountText}>
-              {selectedIds.size} of {filteredCatches.length} selected
-            </Text>
-          </View>
-        )}
-
-        {/* Main content */}
-        {loading ? (
-          <View style={styles.centerCard}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.centerText}>Loading catches...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.centerCard}>
-            <Text style={styles.errorTitle}>Could not load catches</Text>
-            <Text style={styles.centerSubtext}>{error}</Text>
-            <Pressable style={styles.retryButton} onPress={() => fetchCatches()}>
-              <Text style={styles.retryText}>Try Again</Text>
-            </Pressable>
-          </View>
-        ) : filteredCatches.length === 0 ? (
-          <View style={styles.centerCard}>
-            <View style={styles.emptyIconWrap}>
-              <Fish color={COLORS.textSecondary} size={48} strokeWidth={1.5} />
-            </View>
-            <Text style={styles.emptyTitle}>
-              {activeGroupFilter
-                ? `No catches in "${activeGroupFilter}"`
-                : "No catches yet"}
-            </Text>
-            <Text style={styles.centerSubtext}>
-              {activeGroupFilter
-                ? "Try a different group or tap the banner above to clear the filter."
-                : "Start logging your catches to see them here."}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.list}>
-            {displayCatches.map((catchLog) => (
-              <CatchCard
-                key={catchLog.id}
-                catchLog={catchLog}
-                isSelected={selectedIds.has(catchLog.id)}
-                selectionMode={selectionMode}
-                onPress={handleCardPress}
-                onLongPress={handleCardLongPress}
-              />
-            ))}
-          </View>
-        )}
-      </ScrollView>
+        data={!loading && !error ? displayCatches : []}
+        keyExtractor={(item) => item.id}
+        renderItem={renderItem}
+        extraData={[selectedIds, selectionMode]}
+        ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
+        ListHeaderComponent={listHeader}
+        ListEmptyComponent={listEmpty}
+        removeClippedSubviews
+        maxToRenderPerBatch={12}
+        windowSize={5}
+      />
 
       {/* Bottom selection action bar */}
       {selectionMode && (
@@ -1071,8 +1095,17 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     textAlign: "center",
   },
-  list: {
-    gap: 10,
+  emptyCtaBtn: {
+    marginTop: 8,
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 28,
+  },
+  emptyCtaBtnText: {
+    color: "#000",
+    fontWeight: "800",
+    fontSize: 15,
   },
   card: {
     backgroundColor: COLORS.surface,

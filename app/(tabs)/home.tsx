@@ -6,9 +6,17 @@ import { ProBadge } from "@/components/ProBadge";
 import { COLORS } from "@/lib/colors";
 import { CatchLog, getCatchStats, getUserCatchLogs } from "@/lib/catches";
 import { FeedItem, getFriendFeed } from "@/lib/friends";
+import {
+  getSeasonalSummary,
+  getLatestNewMilestone,
+  getOnThisDay,
+} from "@/lib/retention";
+import { SeasonSummaryCard } from "@/components/SeasonSummaryCard";
+import { MilestoneCard } from "@/components/MilestoneCard";
+import { OnThisDayCard } from "@/components/OnThisDayCard";
 import { router } from "expo-router";
 import { useIsFocused } from "@react-navigation/native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   BarChart2,
@@ -26,6 +34,7 @@ import {
 } from "lucide-react-native";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   RefreshControl,
@@ -36,8 +45,8 @@ import {
 } from "react-native";
 import ScanButton from "../../components/ScanButton";
 import Avatar from "@/components/Avatar";
-
-
+import { OnboardingFlow } from "@/components/Onboarding/OnboardingFlow";
+import { hasCompletedOnboarding } from "@/lib/onboarding";
 
 export default function Home() {
   const { profile, loading } = useAuth();
@@ -47,16 +56,27 @@ export default function Home() {
   const insets = useSafeAreaInsets();
 
   const [stats, setStats] = useState({ totalCatches: 0, speciesCount: 0 });
+  const [catches, setCatches] = useState<CatchLog[]>([]);
   const [recentCatch, setRecentCatch] = useState<CatchLog | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [feedLoading, setFeedLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
+  useEffect(() => {
+    hasCompletedOnboarding().then((done) => {
+      if (!done) setShowOnboarding(true);
+    });
+  }, []);
 
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
-    if (!error) {
+    if (error) {
+      Alert.alert("Sign Out Failed", error.message);
+    } else {
       router.replace("/");
     }
   };
@@ -70,9 +90,10 @@ export default function Home() {
       setRecentCatch(null);
       return;
     }
-    const catches = await getUserCatchLogs(user.id);
-    setStats(getCatchStats(catches));
-    setRecentCatch(catches[0] ?? null);
+    const allCatches = await getUserCatchLogs(user.id);
+    setStats(getCatchStats(allCatches));
+    setCatches(allCatches);
+    setRecentCatch(allCatches[0] ?? null);
   }, []);
 
   const loadFeed = useCallback(async () => {
@@ -96,11 +117,11 @@ export default function Home() {
 
     const run = async () => {
       setStatsLoading(true);
+      setStatsError(false);
       try {
         await loadStats();
       } catch {
-        setStats({ totalCatches: 0, speciesCount: 0 });
-        setRecentCatch(null);
+        setStatsError(true);
       } finally {
         setStatsLoading(false);
       }
@@ -112,14 +133,22 @@ export default function Home() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
+    setStatsError(false);
     try {
-      await Promise.all([loadStats(), loadFeed()]);
-    } catch {
-      // errors are swallowed in individual loaders
+      await Promise.all([
+        loadStats().catch(() => setStatsError(true)),
+        loadFeed(),
+      ]);
     } finally {
       setRefreshing(false);
     }
   }, [loadStats, loadFeed]);
+
+  // Retention cards — derived synchronously from the already-loaded catches array.
+  // Must be declared before any early return to satisfy Rules of Hooks.
+  const seasonalSummary = useMemo(() => getSeasonalSummary(catches), [catches]);
+  const latestMilestone = useMemo(() => getLatestNewMilestone(catches), [catches]);
+  const onThisDay = useMemo(() => getOnThisDay(catches), [catches]);
 
   if (loading || statsLoading) {
     return (
@@ -131,8 +160,14 @@ export default function Home() {
   }
 
   const hasPendingRequests = pendingRequests.length > 0;
+  const isFirstTimeUser = stats.totalCatches === 0 && !statsLoading;
 
   return (
+    <>
+    <OnboardingFlow
+      visible={showOnboarding}
+      onDone={() => setShowOnboarding(false)}
+    />
     <ScrollView
       style={styles.container}
       contentContainerStyle={{ paddingBottom: 48 }}
@@ -271,27 +306,47 @@ export default function Home() {
 
       {/* Your Stats */}
       <Text style={styles.sectionLabel}>Your Stats</Text>
-      <View style={styles.rowGrid}>
-        <View style={styles.statBubble}>
-          <View style={styles.row}>
-            <View style={styles.statIcon}>
-              <Fish color={COLORS.primary} size={24} strokeWidth={2} />
-            </View>
-            <Text style={styles.statLabel}>Total Catches</Text>
-          </View>
-          <Text style={styles.statValue}>{stats.totalCatches}</Text>
+      {statsError ? (
+        <View style={styles.statsErrorCard}>
+          <Text style={styles.statsErrorText}>Couldn't load stats — pull to refresh</Text>
         </View>
+      ) : (
+        <View style={styles.rowGrid}>
+          <View style={styles.statBubble}>
+            <View style={styles.row}>
+              <View style={styles.statIcon}>
+                <Fish color={COLORS.primary} size={24} strokeWidth={2} />
+              </View>
+              <Text style={styles.statLabel}>Total Catches</Text>
+            </View>
+            <Text style={styles.statValue}>{stats.totalCatches}</Text>
+          </View>
 
-        <View style={styles.statBubble}>
-          <View style={styles.row}>
-            <View style={styles.statIcon}>
-              <Fish size={24} color={COLORS.primary} />
+          <View style={styles.statBubble}>
+            <View style={styles.row}>
+              <View style={styles.statIcon}>
+                <Fish size={24} color={COLORS.primary} />
+              </View>
+              <Text style={styles.statLabel}>Species</Text>
             </View>
-            <Text style={styles.statLabel}>Species</Text>
+            <Text style={styles.statValue}>{stats.speciesCount}</Text>
           </View>
-          <Text style={styles.statValue}>{stats.speciesCount}</Text>
         </View>
-      </View>
+      )}
+
+      {/* Season summary — only when ≥ 3 catches this season */}
+      {seasonalSummary && (
+        <SeasonSummaryCard
+          summary={seasonalSummary}
+          onPress={() => router.push("/analytics")}
+          style={styles.retentionCard}
+        />
+      )}
+
+      {/* Milestone — only when a threshold was crossed in the last 14 days */}
+      {latestMilestone && (
+        <MilestoneCard milestone={latestMilestone} style={styles.retentionCard} />
+      )}
 
       {/* Recent Activity */}
       <Text style={styles.sectionLabel}>Recent Activity</Text>
@@ -340,6 +395,29 @@ export default function Home() {
           </View>
         </View>
       </View>
+
+      {/* On this day — only when prior-year catches exist on today's calendar date */}
+      {onThisDay && (
+        <OnThisDayCard entry={onThisDay} style={styles.retentionCard} />
+      )}
+
+      {/* First-run journey card */}
+      {isFirstTimeUser && (
+        <Pressable
+          style={({ pressed }) => [styles.journeyCard, pressed && styles.cardPressed]}
+          onPress={() => router.push("/log" as never)}
+        >
+          <View style={styles.journeyIconWrap}>
+            <Fish size={22} color={COLORS.primary} strokeWidth={1.8} />
+          </View>
+          <View style={styles.journeyContent}>
+            <Text style={styles.journeyTitle}>Start your fishing history</Text>
+            <Text style={styles.journeySub}>
+              Log your first catch to unlock analytics, insights, and your fishing map.
+            </Text>
+          </View>
+        </Pressable>
+      )}
 
       {/* Friends Feed */}
       <Text style={styles.sectionLabel}>Friends Feed</Text>
@@ -422,12 +500,17 @@ export default function Home() {
         </View>
       )}
     </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.72,
+  },
+  retentionCard: {
+    marginHorizontal: 16,
+    marginBottom: 12,
   },
 
   loadingContainer: {
@@ -588,6 +671,21 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  statsErrorCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "rgba(239,68,68,0.18)",
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+  },
+  statsErrorText: {
+    color: "#fca5a5",
+    fontSize: 13,
+    fontWeight: "500",
+    textAlign: "center",
+  },
   statBubble: {
     backgroundColor: COLORS.surface,
     borderRadius: 20,
@@ -771,5 +869,41 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 11,
     flexShrink: 1,
+  },
+
+  // First-run journey card
+  journeyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    backgroundColor: "rgba(253,123,65,0.07)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(253,123,65,0.22)",
+    padding: 16,
+    marginBottom: 20,
+  },
+  journeyIconWrap: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "rgba(253,123,65,0.14)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  journeyContent: {
+    flex: 1,
+    gap: 4,
+  },
+  journeyTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  journeySub: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    lineHeight: 17,
   },
 });

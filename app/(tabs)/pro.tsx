@@ -1,16 +1,18 @@
 import { useSubscription } from "@/auth/SubscriptionProvider";
+import { DebugSubscriptionPanel } from "@/components/DebugSubscriptionPanel";
 import { COLORS } from "@/lib/colors";
-import { PRODUCT_PRICES } from "@/lib/subscriptions";
 import { router } from "expo-router";
 import {
   BarChart2,
   CheckCircle2,
   ChevronLeft,
   Crown,
+  ExternalLink,
   Flame,
   Lightbulb,
   MapPin,
   RotateCcw,
+  Settings,
   SlidersHorizontal,
 } from "lucide-react-native";
 import { useCallback, useState } from "react";
@@ -57,50 +59,70 @@ const FEATURES = [
 
 export default function ProScreen() {
   const insets = useSafeAreaInsets();
-  const { isPro, purchasePro, restore, loading } = useSubscription();
+  const { isPro, loading, presentPaywall, presentCustomerCenter, restore } =
+    useSubscription();
   const [purchasing, setPurchasing] = useState(false);
+  const [managing, setManaging] = useState(false);
   const [restoring, setRestoring] = useState(false);
 
+  // ── Subscribe — opens RC native paywall ────────────────────────────────────
   const handleSubscribe = useCallback(async () => {
     setPurchasing(true);
     try {
-      const result = await purchasePro();
-      if (result.success) {
+      const result = await presentPaywall();
+      if (result.activated) {
         Alert.alert("Welcome to Pro!", "Your FishForge Pro subscription is now active.");
         router.back();
-      } else if (result.error === "not_configured") {
+      } else if (result.outcome === "not_presented") {
+        // No offerings configured in RC dashboard yet.
         Alert.alert(
-          "Coming Soon",
-          "In-app purchases are being set up. Check back soon for the full subscription experience.",
-          [{ text: "OK" }]
+          "Not Available Yet",
+          "Subscriptions are being set up. Check back soon or contact support@fishforgeapp.com."
         );
-      } else if (result.error !== "cancelled") {
-        Alert.alert("Something went wrong", "Please try again or contact support.");
+      } else if (result.outcome === "error") {
+        Alert.alert(
+          "Something Went Wrong",
+          "We couldn't open the subscription screen. Please try again or contact support@fishforgeapp.com."
+        );
       }
+      // "cancelled" outcome — user dismissed the paywall, no alert needed.
     } finally {
       setPurchasing(false);
     }
-  }, [purchasePro]);
+  }, [presentPaywall]);
 
+  // ── Manage — opens RC Customer Center (Pro users) ─────────────────────────
+  const handleManage = useCallback(async () => {
+    setManaging(true);
+    try {
+      await presentCustomerCenter();
+    } finally {
+      setManaging(false);
+    }
+  }, [presentCustomerCenter]);
+
+  // ── Restore — fallback for users who need it outside Customer Center ───────
   const handleRestore = useCallback(async () => {
     setRestoring(true);
     try {
       const result = await restore();
       if (result.isPro) {
-        Alert.alert("Purchases Restored", "Your Pro subscription has been restored.");
+        Alert.alert("Purchases Restored", "Your FishForge Pro subscription has been restored.");
         router.back();
+      } else if (result.error === "not_configured") {
+        Alert.alert("Not Available", "Subscription restore is being set up. Check back soon.");
       } else {
         Alert.alert(
           "No Purchases Found",
-          result.error === "not_configured"
-            ? "In-app purchases are being set up. Check back soon."
-            : "We couldn't find any previous purchases for this account."
+          "We couldn't find a previous Pro purchase linked to this account. Make sure you're signed in with the same account used to subscribe."
         );
       }
     } finally {
       setRestoring(false);
     }
   }, [restore]);
+
+  const ctaDisabled = purchasing || managing || loading;
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
@@ -109,7 +131,7 @@ export default function ProScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Header */}
+        {/* Back button */}
         <View style={[styles.navRow, { paddingTop: insets.top + 8 }]}>
           <Pressable
             onPress={() => router.back()}
@@ -152,53 +174,62 @@ export default function ProScreen() {
           ))}
         </View>
 
-        {/* Pricing */}
-        {!isPro && (
-          <View style={styles.pricingCard}>
-            <View style={styles.pricingRow}>
-              <View style={styles.pricingOption}>
-                <Text style={styles.pricingAmount}>$4.99</Text>
-                <Text style={styles.pricingPeriod}>per month</Text>
-              </View>
-              <View style={styles.pricingDivider} />
-              <View style={styles.pricingOption}>
-                <View style={styles.pricingAnnualRow}>
-                  <Text style={styles.pricingAmount}>$39.99</Text>
-                  <View style={styles.savingsBadge}>
-                    <Text style={styles.savingsText}>{PRODUCT_PRICES.annualSavings}</Text>
-                  </View>
+        {/* Pro user: subscription management section */}
+        {isPro && (
+          <View style={styles.manageSection}>
+            <Pressable
+              style={({ pressed }) => [styles.manageCard, pressed && styles.pressed]}
+              onPress={handleManage}
+              disabled={managing}
+            >
+              <View style={styles.manageCardLeft}>
+                <View style={styles.manageIconWrap}>
+                  <Settings size={16} color={COLORS.textSecondary} strokeWidth={2} />
                 </View>
-                <Text style={styles.pricingPeriod}>per year</Text>
+                <View>
+                  <Text style={styles.manageCardTitle}>Manage Subscription</Text>
+                  <Text style={styles.manageCardSub}>
+                    Cancel, restore, or troubleshoot billing
+                  </Text>
+                </View>
               </View>
-            </View>
+              {managing ? (
+                <ActivityIndicator size="small" color={COLORS.textSecondary} />
+              ) : (
+                <ExternalLink size={15} color={COLORS.textSecondary} strokeWidth={1.8} />
+              )}
+            </Pressable>
           </View>
         )}
+
+        {/* Dev debug panel (dev builds only) */}
+        <DebugSubscriptionPanel />
       </ScrollView>
 
-      {/* Fixed bottom CTA */}
+      {/* Bottom CTA — free users */}
       {!isPro && (
         <View style={styles.bottomCTA}>
           <Pressable
             style={({ pressed }) => [
               styles.subscribeBtn,
-              (purchasing || loading) && styles.subscribeBtnDisabled,
-              pressed && !purchasing && !loading && styles.pressed,
+              ctaDisabled && styles.subscribeBtnDisabled,
+              pressed && !ctaDisabled && styles.pressed,
             ]}
             onPress={handleSubscribe}
-            disabled={purchasing || loading}
+            disabled={ctaDisabled}
           >
             {purchasing ? (
               <ActivityIndicator color="#000" size="small" />
             ) : (
               <>
                 <Crown size={16} color="#000" strokeWidth={2.2} />
-                <Text style={styles.subscribeBtnText}>Subscribe to Pro</Text>
+                <Text style={styles.subscribeBtnText}>View Subscription Plans</Text>
               </>
             )}
           </Pressable>
 
           <Pressable
-            style={styles.restoreBtn}
+            style={({ pressed }) => [styles.restoreBtn, pressed && styles.pressed]}
             onPress={handleRestore}
             disabled={restoring || loading}
           >
@@ -213,15 +244,19 @@ export default function ProScreen() {
           </Pressable>
 
           <Text style={styles.legalText}>
-            Subscriptions auto-renew unless cancelled 24h before period end.{"\n"}
-            Manage in App Store / Google Play Settings.
+            Subscriptions auto-renew unless cancelled at least 24 hours before the
+            end of the current period. Manage anytime in App Store or Google Play settings.
           </Text>
         </View>
       )}
 
+      {/* Bottom CTA — Pro users */}
       {isPro && (
         <View style={styles.bottomCTA}>
-          <Pressable style={[styles.subscribeBtn, styles.subscribeBtnPro]} onPress={() => router.back()}>
+          <Pressable
+            style={[styles.subscribeBtn, styles.subscribeBtnPro]}
+            onPress={() => router.back()}
+          >
             <CheckCircle2 size={16} color="#000" strokeWidth={2.2} />
             <Text style={styles.subscribeBtnText}>You're on Pro</Text>
           </Pressable>
@@ -234,13 +269,9 @@ export default function ProScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 24, paddingBottom: 24 },
+  scrollContent: { paddingHorizontal: 24, paddingBottom: 32 },
 
-  navRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
+  navRow: { flexDirection: "row", alignItems: "center", marginBottom: 8 },
   backBtn: {
     width: 44,
     height: 44,
@@ -249,15 +280,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  pressed: {
-    opacity: 0.65,
-  },
+  pressed: { opacity: 0.65 },
 
-  hero: {
-    alignItems: "center",
-    paddingVertical: 28,
-    gap: 10,
-  },
+  // Hero
+  hero: { alignItems: "center", paddingVertical: 28, gap: 10 },
   crownWrap: {
     width: 72,
     height: 72,
@@ -269,18 +295,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 4,
   },
-  heroTitle: {
-    color: COLORS.text,
-    fontSize: 30,
-    fontWeight: "800",
-    letterSpacing: -0.8,
-  },
-  heroSub: {
-    color: COLORS.textSecondary,
-    fontSize: 15,
-    textAlign: "center",
-    lineHeight: 22,
-  },
+  heroTitle: { color: COLORS.text, fontSize: 30, fontWeight: "800", letterSpacing: -0.8 },
+  heroSub: { color: COLORS.textSecondary, fontSize: 15, textAlign: "center", lineHeight: 22 },
   activeBadge: {
     flexDirection: "row",
     alignItems: "center",
@@ -295,10 +311,8 @@ const styles = StyleSheet.create({
   },
   activeBadgeText: { color: "#4ade80", fontSize: 13, fontWeight: "600" },
 
-  featureList: {
-    gap: 2,
-    marginBottom: 24,
-  },
+  // Features
+  featureList: { gap: 2, marginBottom: 24 },
   featureRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -321,41 +335,31 @@ const styles = StyleSheet.create({
   featureTitle: { color: COLORS.text, fontSize: 15, fontWeight: "700" },
   featureDesc: { color: COLORS.textSecondary, fontSize: 13, lineHeight: 18 },
 
-  pricingCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
-    padding: 20,
-    marginBottom: 16,
-  },
-  pricingRow: {
+  // Manage subscription (Pro users)
+  manageSection: { marginBottom: 8 },
+  manageCard: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.09)",
+    padding: 16,
   },
-  pricingOption: { alignItems: "center", gap: 4, flex: 1 },
-  pricingDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: "rgba(255,255,255,0.12)",
+  manageCardLeft: { flexDirection: "row", alignItems: "center", gap: 12, flex: 1 },
+  manageIconWrap: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  pricingAmount: {
-    color: COLORS.text,
-    fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
-  pricingPeriod: { color: COLORS.textSecondary, fontSize: 12 },
-  pricingAnnualRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  savingsBadge: {
-    backgroundColor: "rgba(74,222,128,0.15)",
-    borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-  },
-  savingsText: { color: "#4ade80", fontSize: 10, fontWeight: "700" },
+  manageCardTitle: { color: COLORS.text, fontSize: 14, fontWeight: "700" },
+  manageCardSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
 
+  // Bottom CTA
   bottomCTA: {
     paddingHorizontal: 24,
     paddingTop: 14,
